@@ -94,4 +94,4 @@ class LISAModelPreprocess:
             for input_name in self.model_config['inputs']  # word type and/or predicate
         ]
         features = tf.concat(features, axis=2)
-        return (features, mask), labels
+        return (features, mask, labels), labels

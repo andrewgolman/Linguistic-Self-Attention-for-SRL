@@ -112,9 +112,11 @@ def main():
     )
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
 
+    loss_instance = LISAModelLoss(model.task_config, model.vocab)
+
     model.compile(
         optimizer=optimizer,
-        loss=LISAModelLoss(model.task_config, model.vocab)
+        loss=loss_instance
     )
     batch_generator = train_utils.train_batch_generator(preprocessor,
                                           vocab, data_config, dev_filenames, num_epochs=1,
@@ -122,7 +124,11 @@ def main():
                                           embedding_files=embedding_files,
                                           batch_size=2)  # hparams.batch_size
     batch, labels = next(batch_generator)
-    model(batch)
+    features, preds = model(batch)
+
+    loss_instance(labels, preds)
+
+    print(preds)
 
     # model.fit_generator(  # todo
     #
