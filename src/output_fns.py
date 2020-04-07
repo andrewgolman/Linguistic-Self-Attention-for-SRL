@@ -1,9 +1,6 @@
 import tensorflow as tf
 import nn_utils
-import tf_utils
-import tensorflow.keras as keras
 import tensorflow.keras.layers as L
-from tensorflow.keras import losses
 from base_fns import FunctionDispatcher
 from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood
 
@@ -13,6 +10,10 @@ class OutputLayer(FunctionDispatcher):
         super(OutputLayer, self).__init__(task_map, **params)
         self.transformer_layer_id = transformer_layer_id
         self.hparams = params['hparams']
+        if task_map.get('viterbi') or task_map.get('crf'):
+            self.static_params['transition_params'] = tf.convert_to_tensor(self.static_params['transition_params'])
+        else:
+            self.static_params['transition_params'] = None
 
     def make_call(self, data, **params):
       raise NotImplementedError
@@ -44,13 +45,12 @@ class SoftmaxClassifier(OutputLayer):
     def loss(self, targets, output, mask):
         logits = output['scores']
         n_labels = self.static_params['task_vocab_size']
-
         targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
-        return tf.losses.softmax_cross_entropy(logits=tf.reshape(logits, [-1, n_labels]),
+        return tf.compat.v1.losses.softmax_cross_entropy(logits=tf.reshape(logits, [-1, n_labels]),
                                                onehot_labels=tf.reshape(targets_onehot, [-1, n_labels]),
                                                weights=tf.reshape(mask, [-1]),
                                                label_smoothing=self.hparams.label_smoothing,
-                                               reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
+                                               reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
 
         # return losses.sparse_categorical_cross_entropy(y_true, y_pred)
 
@@ -191,7 +191,6 @@ class ConditionalBilinear(OutputLayer):
         return tf.reduce_sum(cross_entropy * mask) / n_tokens
 
 
-
 class SRLBilinear(OutputLayer):
     def __init__(self, transformer_layer_id, **params):
         super(SRLBilinear, self).__init__(transformer_layer_id, **params)
@@ -216,7 +215,7 @@ class SRLBilinear(OutputLayer):
         predicate_outside_idx = 0
         return tf.logical_and(tf.not_equal(predicates_tensor, predicate_outside_idx), tf.cast(mask, tf.bool))
 
-    def make_call(self, data, predicate_preds_train, predicate_preds_eval, **kwargs):
+    def make_call(self, data, predicate_preds_train, predicate_preds_eval, predicate_targets):
         '''
 
         :param features: Tensor with dims: [batch_size, batch_seq_len, hidden_size]
@@ -259,9 +258,7 @@ class SRLBilinear(OutputLayer):
         srl_logits = self.bilinear([gathered_predicates, gathered_roles])
         logits_shape = srl_logits.get_shape()
         srl_logits = tf.reshape(srl_logits, [-1, logits_shape[2], logits_shape[3]])
-        # BATCH, SEQ, CLASS_PROB
         srl_logits_transposed = tf.transpose(srl_logits, [0, 2, 1])
-        # BATCH, CLASS_PROB, SEQ
 
         # num_predicates_in_batch x seq_len
         predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)
@@ -274,17 +271,34 @@ class SRLBilinear(OutputLayer):
         if transition_params is not None and self.in_eval_mode:
             predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
 
-
+        # todo AG clear the mess
         output = {
             'predictions': predictions,
             'scores': srl_logits_transposed,
             # 'targets': srl_targets_gold_predicates,
-            'probabilities': tf.nn.softmax(srl_logits_transposed, -1)
+            'probabilities': tf.nn.softmax(srl_logits_transposed, -1),
+            'params': {
+                'predicate_preds': predicate_preds,
+                'batch_seq_len': batch_seq_len,
+                'batch_size': batch_size,
+                'predicate_targets': predicate_targets,
+            }
         }
 
         return output
 
-    def loss(self, targets, output, mask, predicate_targets):
+    def loss(self, targets, output, mask):
+        srl_logits_transposed = output['scores']
+        num_labels = self.static_params['task_vocab_size']
+        predicate_preds = output['params']['predicate_preds']
+        batch_seq_len = output['params']['batch_seq_len']
+        batch_size = output['params']['batch_size']
+        predicate_targets = output['params']['predicate_targets']
+        seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)
+        transition_params = self.static_params['transition_params']
+
+        predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
+
         # (3) compute loss
         # need to repeat each of these once for each target in the sentence
         mask_tiled = tf.reshape(tf.tile(mask, [1, batch_seq_len]), [batch_size, batch_seq_len, batch_seq_len])
@@ -312,22 +326,25 @@ class SRLBilinear(OutputLayer):
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(predicted_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_pred_indices)
 
-
-        if transition_params is not None and mode == ModeKeys.TRAIN and tf_utils.is_trainable(transition_params):
-            # flat_seq_lens = tf.reshape(tf.tile(seq_lens, [1, bucket_size]), tf.stack([batch_size * bucket_size]))
-            log_likelihood, transition_params = crf_log_likelihood(srl_logits_transposed,
-                                                                                  srl_targets_predicted_predicates,
-                                                                                  seq_lens, transition_params)
+        if transition_params is not None and not self.in_eval_mode:
+            log_likelihood, transition_params = crf_log_likelihood(
+                srl_logits_transposed,
+                srl_targets_predicted_predicates,
+                seq_lens, transition_params
+            )
             loss = tf.reduce_mean(-log_likelihood)
         else:
             srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
-            loss = tf.losses.softmax_cross_entropy(logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
-                                                   onehot_labels=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-                                                   weights=tf.reshape(gather_mask, [-1]),
-                                                   label_smoothing=hparams.label_smoothing,
-                                                   reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
+            loss = tf.compat.v1.losses.softmax_cross_entropy(
+                logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
+                onehot_labels=tf.reshape(srl_targets_onehot, [-1, num_labels]),
+                weights=tf.reshape(gather_mask, [-1]),
+                label_smoothing=self.hparams.label_smoothing,
+                reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+            )
 
         return loss
+
 
 dispatcher = {
   'srl_bilinear': SRLBilinear,

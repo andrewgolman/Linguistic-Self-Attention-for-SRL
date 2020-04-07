@@ -1,12 +1,12 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow.keras.layers as L
+import tensorflow.compat.v1.logging as logging
 import evaluation_fns
 import output_fns
 import util
 import transformer_layer
 from preprocess_batch import LISAModelPreprocess
-from loss import LISAModelLoss
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
 
@@ -36,22 +36,14 @@ class LISAModel(keras.models.Model):
 
         self.init_layers()
 
+        logging.log(logging.INFO,
+                    "Created model with {} trainable parameters".format(util.count_model_params(self)))
+
     def init_layers(self):
         self.initial_dropout = L.Dropout(self.hparams.input_dropout)
         self.layer_norm = L.LayerNormalization(epsilon=1e-6)
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.dense1 = L.Dense(sa_hidden_size)
-
-        # transition_params = None
-        #
-        # if task == 'srl_bilinear':
-        #     # Set up CRF / Viterbi transition params if specified
-        #     # transition_stats_file = task_map['transition_stats'] if 'transition_stats' in task_map else None
-        #     task_transition_stats = self.transition_stats[task] if task in self.transition_stats else None
-        #
-        #     # create transition parameters if training or decoding with crf/viterbi
-        #     if task_map.get('viterbi') or task_map.get('crf'):
-        #         transition_params = tf.convert_to_tensor(task_transition_stats)
 
         self.transformer_layers = [
             transformer_layer.TransformerLayer(i+1, self.task_config.get(i),
@@ -81,7 +73,9 @@ class LISAModel(keras.models.Model):
         features = self.initial_dropout(features)
         features = self.dense1(features)
 
-        predictions = {}
+        predictions = {
+            'mask': mask
+        }  # loss needs it
 
         features = self.positional_encoder(features)
         for i in range(self.num_layers):
@@ -102,7 +96,6 @@ class LISAModel(keras.models.Model):
 
         return features, predictions
 
-
     def get_preprocessor_instance(self):
         return LISAModelPreprocess(self.feature_idx_map, self.label_idx_map, self.model_config, self.vocab)
 
@@ -121,5 +114,4 @@ class LISAModel(keras.models.Model):
 #
 #         export_outputs = {tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
 #                           tf.estimator.export.PredictOutput(flat_predictions)}
-#         logging.log(logging.INFO,
-#                   "Created model with %d trainable parameters" % tf_utils.get_num_trainable_parameters())
+

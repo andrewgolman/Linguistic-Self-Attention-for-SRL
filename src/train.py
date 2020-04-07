@@ -4,10 +4,11 @@ import tensorflow.keras.optimizers as optim
 
 import argparse
 import os
-from functools import partial
 import train_utils
 from vocab import Vocab
-from model import LISAModel, LISAModelLoss
+from model import LISAModel
+from loss import LISAModelLoss
+
 import numpy as np
 import util
 import tensorflow.compat.v1.logging as logging
@@ -112,7 +113,7 @@ def main():
     )
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
 
-    loss_instance = LISAModelLoss(model.task_config, model.vocab)
+    loss_instance = LISAModelLoss(model.output_layers, model.task_config)
 
     model.compile(
         optimizer=optimizer,
@@ -126,9 +127,9 @@ def main():
     batch, labels = next(batch_generator)
     features, preds = model(batch)
 
-    loss_instance(labels, preds)
+    loss = loss_instance(labels, preds)
 
-    print(preds)
+    print(loss)
 
     # model.fit_generator(  # todo
     #
