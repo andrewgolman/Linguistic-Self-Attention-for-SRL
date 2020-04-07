@@ -1,0 +1,97 @@
+import tensorflow as tf
+import numpy as np
+import tensorflow.keras.backend as K
+import tensorflow.keras.layers as L
+
+def int_to_str_lookup_table(inputs, lookup_map):
+  # todo order of map.values() is probably not guaranteed; should prob sort by keys first
+  return tf.nn.embedding_lookup(np.array(list(lookup_map.values())), inputs)
+
+
+def set_vars_to_moving_average(moving_averager):
+  moving_avg_variables = tf.get_collection(tf.GraphKeys.MOVING_AVERAGE_VARIABLES)
+  return tf.group(*[tf.assign(x, moving_averager.average(x)) for x in moving_avg_variables])
+
+
+# similar to https://github.com/keras-team/keras/blob/master/keras/layers/core.py#L796
+class Bilinear(L.Layer):
+    def __init__(self, output_size, add_bias=True):
+        # output_size = 2
+        super(Bilinear, self).__init__()
+        self.output_size = output_size
+        self.add_bias = add_bias
+
+    def build(self, input_shape):
+        self.matrix_shape = input_shape[0][-1] + self.add_bias
+        self.kernel = self.add_weight(
+            name='kernel',
+            # inputs1_size + add_bias1, output_size, inputs2_size + add_bias2
+            shape=(self.matrix_shape, self.output_size, self.matrix_shape),
+            initializer='glorot_uniform',
+            trainable=True
+        )
+        super(Bilinear, self).build(input_shape)
+
+    def call(self, data):
+        left, right = data
+        if self.add_bias:
+            left_bias_shape = left.get_shape().as_list()
+            left_bias_shape[-1] = 1
+            right_bias_shape = right.get_shape().as_list()
+            right_bias_shape[-1] = 1
+
+            left = K.concatenate([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=-1)
+            right = K.concatenate([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=-1)
+
+        lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
+        lin = tf.reshape(lin, [lin.shape[0], lin.shape[1] * self.output_size, lin.shape[2] // self.output_size])
+        right = tf.transpose(right, [0, 2, 1])
+        bilin = tf.matmul(lin, right)
+        bilin = tf.reshape(bilin, [bilin.shape[0], bilin.shape[1] // self.output_size, self.output_size, bilin.shape[-1]])
+        return bilin
+
+
+
+class BilinearClassifier(L.Layer):
+    def __init__(self, n_outputs, dropout=0, noise_shape=None):
+        # noise_shape = [batch_size, 1, input_size]
+
+        # NARY
+        # noise_shape1 = tf.stack([batch_size1, 1, input_size1])
+        # noise_shape2 = tf.stack([batch_size2, 1, input_size2])
+
+        super(BilinearClassifier, self).__init__()
+        self.bilinear = Bilinear(n_outputs)
+        self.dropout = L.Dropout(dropout)
+
+    def call(self, data):
+        left, right = data
+        left = self.dropout(left)
+        right = self.dropout(right)
+        bilin = self.bilinear([left, right])
+        return bilin
+
+
+class ConditionalBilinearClassifier(L.Layer):
+    def __init__(self, n_outputs, dropout, noise_shape=None):
+        #     noise_shape = tf.stack([batch_size, 1, input_size])
+        super(ConditionalBilinearClassifier, self).__init__()
+        self.bilinear = BilinearClassifier(n_outputs)
+        self.n_outputs = n_outputs
+
+    def call(self, data):
+        left, right, probs = data
+        bilin = self.bilinear([left, right])
+
+        input_shape = tf.shape(left)
+        batch_size = input_shape[0]
+        bucket_size = input_shape[1]
+
+        if len(probs.get_shape().as_list()) == 2:
+            probs = tf.cast(tf.one_hot(tf.cast(probs, dtype=tf.int64), bucket_size, 1, 0), dtype=tf.float32)
+        else:
+            probs = tf.stop_gradient(probs)
+
+        bilin = tf.reshape(bilin, [batch_size, bucket_size, self.n_outputs, bucket_size])
+        weighted_bilin = tf.squeeze(tf.matmul(bilin, tf.expand_dims(probs, 3)), -1)
+        return weighted_bilin, bilin
