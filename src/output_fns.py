@@ -88,7 +88,8 @@ class JointSoftmaxClassifier(OutputLayer):
       return sep_outputs
 
     def make_call(self, data, **kwargs):
-        # todo AG check
+        # features: [BATCH_SIZE, SEQ_LEN, SA_HID]
+        # mask: [BATCH_SIZE, SEQ_LEN]
         features, mask = data
         logits = self.dropout1(features)
         logits = self.dense1(logits)
@@ -98,9 +99,9 @@ class JointSoftmaxClassifier(OutputLayer):
         predictions = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
 
         output = {
-            'predictions': predictions,
-            'scores': logits,
-            'probabilities': tf.nn.softmax(logits, -1)
+            'predictions': predictions,  # [BATCH_SIZE, SEQ_LEN]
+            'scores': logits,  # [BATCH_SIZE, SEQ_LEN, VOCAB_SIZE]
+            'probabilities': tf.nn.softmax(logits, -1)  # [BATCH_SIZE, SEQ_LEN, VOCAB_SIZE]
         }
 
         n_labels = self.static_params['task_vocab_size']
@@ -132,12 +133,11 @@ class ParseBilinear(OutputLayer):
 
         features = self.dense1(features)
         dep_mlp, head_mlp = tf.split(value=features, num_or_size_splits=2, axis=-1)
-        # todo AG fix stacking
+
         dep_arc_mlp, dep_rel_mlp = dep_mlp[:, :, :self.attn_mlp_size], dep_mlp[:, :, self.attn_mlp_size:]
         head_arc_mlp, head_rel_mlp = head_mlp[:, :, :self.attn_mlp_size], head_mlp[:, :, self.attn_mlp_size:]
 
-        # batch_size x batch_seq_len x batch_seq_len
-        # todo AG replace layer
+        # [batch_size x seq_len x seq_len]
         arc_logits = self.bilinear([dep_arc_mlp, head_arc_mlp])
         arc_logits = tf.squeeze(arc_logits, axis=2)
 
@@ -145,11 +145,11 @@ class ParseBilinear(OutputLayer):
         probabilities = tf.nn.softmax(arc_logits)
 
         output = {
-          'predictions': predictions,
-          'probabilities': probabilities,
-          'scores': arc_logits,
-          'dep_rel_mlp': dep_rel_mlp,
-          'head_rel_mlp': head_rel_mlp
+          'predictions': predictions,  # [BATCH_SIZE, SEQ_LEN] (predictions for arcs)
+          'probabilities': probabilities,  # [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
+          'scores': arc_logits,  # [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
+          'dep_rel_mlp': dep_rel_mlp,  # [BATCH_SIZE, SEQ_LEN, class_mlp_size]
+          'head_rel_mlp': head_rel_mlp  # [BATCH_SIZE, SEQ_LEN, class_mlp_size]
         }
 
         return output
@@ -177,9 +177,9 @@ class ConditionalBilinear(OutputLayer):
         probabilities = tf.nn.softmax(logits)
 
         output = {
-            'scores': logits,
-            'predictions': predictions,
-            'probabilities': probabilities
+            'scores': logits,  # [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
+            'predictions': predictions,  # [BATCH_SIZE, SEQ_LEN] (conditional arcs)
+            'probabilities': probabilities,  # [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
         }
 
         return output
@@ -218,13 +218,11 @@ class SRLBilinear(OutputLayer):
     def make_call(self, data, predicate_preds_train, predicate_preds_eval, predicate_targets):
         '''
 
-        :param features: Tensor with dims: [batch_size, batch_seq_len, hidden_size]
-        :param mask:
-        :param predicate_preds: Tensor of predictions from predicates layer with dims: [batch_size, batch_seq_len]
-        :param targets: Tensor of SRL labels with dims: [batch_size, batch_seq_len, batch_num_predicates]
-        :param predictions:
+        :param features: [BATCH_SIZE, SEQ_LEN, hidden_size]
+        :param mask: [BATCH_SIZE, SEQ_LEN]
+        :param predicate_preds: [BATCH_SIZE, SEQ_LEN] Predictions from predicates layer with dims
+        :param targets: [BATCH_SIZE, SEQ_LEN, batch_num_predicates] SRL labels
         :param transition_params: [num_labels x num_labels] transition parameters, if doing Viterbi decoding
-        :return:
         '''
         features, mask = data
 
@@ -232,14 +230,16 @@ class SRLBilinear(OutputLayer):
         batch_size = input_shape[0]
         batch_seq_len = input_shape[1]
 
+        # indices of predicates
         predicate_preds = predicate_preds_train if not self.in_eval_mode else predicate_preds_eval
+        # [PRED_COUNT, 2] (batch_row, sentence_pos for each predicate)
         predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
 
         # (1) project into predicate, role representations
-        features = self.dropout(features)  # BATCH, SEQ, HID
-        predicate_role_mlp = self.dense1(features)
-        predicate_mlp = predicate_role_mlp[:, :, :self.predicate_mlp_size]
-        role_mlp = predicate_role_mlp[:, :, self.predicate_mlp_size:]
+        features = self.dropout(features)
+        predicate_role_mlp = self.dense1(features)  # [BATCH_SIZE, SEQ_LEN, predicate_mlp_size+role_mlp_size]
+        predicate_mlp = predicate_role_mlp[:, :, :self.predicate_mlp_size]  # [BATCH_SIZE, SEQ_LEN, predicate_mlp_size]
+        role_mlp = predicate_role_mlp[:, :, self.predicate_mlp_size:]  # [BATCH_SIZE, SEQ_LEN, role_mlp_size]
 
         # (2) feed through bilinear to obtain scores
         # gather just the predicates
@@ -247,25 +247,25 @@ class SRLBilinear(OutputLayer):
         # role mlp: batch x seq_len x role_mlp_size
         # gathered roles: need a (batch_seq_len x role_mlp_size) role representation for each predicate,
         # i.e. a (num_predicates_in_batch x batch_seq_len x role_mlp_size) tensor
-        gathered_predicates = tf.expand_dims(tf.gather_nd(predicate_mlp, predicate_gather_indices), 1)
+        gathered_predicates = tf.expand_dims(tf.gather_nd(predicate_mlp, predicate_gather_indices), 1)  # [PRED_COUNT, 1, role_mlp_size]
 
         # AG duplicate dimension
         tiled_roles = tf.reshape(tf.tile(role_mlp, [1, batch_seq_len, 1]),
                                  [batch_size, batch_seq_len, batch_seq_len, self.role_mlp_size])
-        gathered_roles = tf.gather_nd(tiled_roles, predicate_gather_indices)
+        gathered_roles = tf.gather_nd(tiled_roles, predicate_gather_indices)  # [PRED_COUNT, SEQ_LEN, HID]
 
         # now multiply them together to get (num_predicates_in_batch x batch_seq_len x num_srl_classes) tensor of scores
-        srl_logits = self.bilinear([gathered_predicates, gathered_roles])
+        srl_logits = self.bilinear([gathered_predicates, gathered_roles])  # [PRED_COUNT, bilin_output_size, SEQ_LEN]
         logits_shape = srl_logits.get_shape()
         srl_logits = tf.reshape(srl_logits, [-1, logits_shape[2], logits_shape[3]])
-        srl_logits_transposed = tf.transpose(srl_logits, [0, 2, 1])
+        srl_logits_transposed = tf.transpose(srl_logits, [0, 2, 1])  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
 
         # num_predicates_in_batch x seq_len
-        predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)
+        predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN]
 
         # todo AG check
         # seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)
-        seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)
+        seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)  # [BATCH_SIZE]
 
         transition_params = self.static_params["transition_params"]
         if transition_params is not None and self.in_eval_mode:
@@ -274,9 +274,9 @@ class SRLBilinear(OutputLayer):
         # todo AG clear the mess
         output = {
             'predictions': predictions,
-            'scores': srl_logits_transposed,
+            'scores': srl_logits_transposed,  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
             # 'targets': srl_targets_gold_predicates,
-            'probabilities': tf.nn.softmax(srl_logits_transposed, -1),
+            'probabilities': tf.nn.softmax(srl_logits_transposed, -1),  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
             'params': {
                 'predicate_preds': predicate_preds,
                 'batch_seq_len': batch_seq_len,

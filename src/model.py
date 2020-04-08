@@ -52,7 +52,6 @@ class LISAModel(keras.models.Model):
         ]
         self.positional_encoder = SinusoidalPositionEncoder()
 
-
         self.output_layers = {}
         for layer_id in self.task_config:
             for task, params in self.task_config[layer_id].items():
@@ -68,16 +67,41 @@ class LISAModel(keras.models.Model):
                     hparams=self.hparams,
                 )
 
+    def get_metrics(self):
+        metrics = []
+        for layer_id in self.task_config:
+            for task, params in self.task_config[layer_id].items():
+                for eval_name, eval_map in params['eval_fns'].items():
+                    name = eval_map['name']
+                    fn = evaluation_fns.dispatcher[name](
+                        task=task,
+                        config=eval_map,
+                        reverse_maps=self.vocab.reverse_maps,
+                    )
+                    metrics.append(fn)
+
+        return metrics
+
     def call(self, data):
-        features, mask, labels = data
-        features = self.initial_dropout(features)
-        features = self.dense1(features)
+        """
+        :param data:
+            features: [BATCH_SIZE, SEQ_LEN, HID]
+            mask: [BATCH_SIZE, SEQ_LEN]
+            labels: Dict{task : [BATCH_SIZE, SEQ_LEN]} (for srl: [..., 9])
+            data
+        :return: features, tokens, mask, predictions
+        """
+        features, mask, labels, tokens = data
 
         predictions = {
-            'mask': mask
-        }  # loss needs it
+            'mask': mask,  # loss needs it
+            'tokens': tokens  # todo AG how come we need it
+        }
 
-        features = self.positional_encoder(features)
+        features = self.initial_dropout(features)
+        features = self.dense1(features)
+        features = self.positional_encoder(features)  # [BATCH_SIZE, SEQ_LEN, SA_HID==NUM_HEADS * HEAD_DIM]
+
         for i in range(self.num_layers):
             features = self.transformer_layers[i]([features, mask, predictions, labels])
 
@@ -89,15 +113,16 @@ class LISAModel(keras.models.Model):
             for task, layer in self.output_layers.items():
                 if layer.transformer_layer_id == i:
                     predictions[task] = self.output_layers[task](
-                        [features, mask],
+                        [predict_features, mask],
                         outputs=predictions,
                         labels=labels,
-                    )
+                    )  # todo doc
 
         return features, predictions
 
     def get_preprocessor_instance(self):
         return LISAModelPreprocess(self.feature_idx_map, self.label_idx_map, self.model_config, self.vocab)
+
 
 # def train_step(self):
 #     if self.hparams.moving_average_decay > 0.:

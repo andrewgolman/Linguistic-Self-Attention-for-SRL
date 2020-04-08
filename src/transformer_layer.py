@@ -13,6 +13,7 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
         """
         Runs the layer.
         This code is taken from the base class, with alterations regarding only special values
+        Special attention heads and values replace normally calculated heads, so model can utilize outside data
         """
 
         inputs, (special_attn, special_values) = inputs
@@ -73,14 +74,13 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
 
         attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
-        # <AG CODE HERE>
+        # Replace last heads with special heads. todo AG optimize
         unstacked_attn = tf.unstack(attn, axis=1)
         for i, t in enumerate(special_attn):
             unstacked_attn[-i] = t
         attn = tf.stack(unstacked_attn, axis=1)
         for i, t, in enumerate(special_values):
             raise NotImplementedError
-        # attn = tf.concat([attn] + list(map(lambda x: tf.expand_dims(x, 1), special_attn)), axis=1)
         # values = tf.concat(special_values + [values], axis=1)
 
         drop_attn = onmt_transformer.common.dropout(attn, self.dropout, training=training)
@@ -97,6 +97,9 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
 
 
 class SelfAttentionEncoderLayerWithSpecial(SelfAttentionEncoderLayer):
+    """
+    Replace self.self_attention with the attention, derived from MultiHeadAttention
+    """
     def __init__(self,
                  num_units,
                  num_heads,
@@ -141,19 +144,24 @@ class TransformerLayer(keras.layers.Layer):
             for value_fn, value_fn_map in this_layer_attn_config.get('value_fns', {}).items():
                 self.value_fns.append(
                     attention_fns.dispatcher[value_fn_map['name']](value_fn_map)
-                )  # todo AG value fn make wrong dims
+                )
 
         self.sa_layer = SelfAttentionEncoderLayerWithSpecial(  # todo AG 2-layer FFN vs 3 in original LISA
             num_heads=self.layer_config['num_heads'],
-            num_units=self.layer_config['head_dim'],
+            num_units=self.layer_config['head_dim'] * self.layer_config['num_heads'],
             ffn_inner_dim=self.layer_config['ff_hidden_size'],
-            dropout=self.hparams.prepost_dropout,  # todo AG check after add vs before add
-            attention_dropout=self.hparams.attn_dropout,
-            ffn_dropout=self.hparams.ff_dropout,
+            dropout=1-self.hparams.prepost_dropout,  # todo AG check after add vs before add
+            attention_dropout=1-self.hparams.attn_dropout,
+            ffn_dropout=1-self.hparams.ff_dropout,
             ffn_activation=tf.nn.leaky_relu,  # todo AG do we need it to be leaky?
         )
 
-    def apply_special_attention(self, features, mask, outputs, labels):
+    def compute_special_attention(self, features, mask, outputs, labels):
+        """
+        :return: todo doc
+         special_attn: List[[]]
+         special_values: List[[]]
+        """
         special_attn = []
         special_values = []
 
@@ -168,8 +176,15 @@ class TransformerLayer(keras.layers.Layer):
         return special_attn, special_values
 
     def call(self, data):
+        """
+        features: [BATCH_SIZE, SEQ_LEN, SA_HID]
+        mask: [BATCH_SIZE, SEQ_LEN]
+        outputs: Dict{task: task_outputs}
+        labels: Dict: {task : [BATCH_SIZE, SEQ_LEN]} (for srl: [..., 9])
+        :return features: [BATCH_SIZE, SEQ_LEN, SA_HID]
+        """
         features, mask, outputs, labels = data
-        special_attn, special_values = self.apply_special_attention(features, mask, outputs, labels)
+        special_attn, special_values = self.compute_special_attention(features, mask, outputs, labels)
 
         features = self.sa_layer(inputs=[features, (special_attn, special_values)], mask=mask)
         return features

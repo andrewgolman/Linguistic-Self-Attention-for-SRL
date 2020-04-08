@@ -2,13 +2,16 @@ import tensorflow.keras as keras
 
 
 class FunctionDispatcher(keras.layers.Layer):
+    """
+    Proxy between a model and a function-layer.
+    Takes outputs of various model layers and passes it to a function according to configs
+    """
     def __init__(self, config, **kwargs):
         super(FunctionDispatcher, self).__init__()
         self.in_eval_mode = False
 
         self.static_params = kwargs
         self.label_params = {}
-        self.token_params = {}
         self.output_params = {}
         self.embedding_params = {}
 
@@ -18,8 +21,6 @@ class FunctionDispatcher(keras.layers.Layer):
             # if this is a map-type param, do map lookups and pass those through
             if 'label' in param_values:
                 self.label_params[param_name] = param_values['label']
-            elif 'feature' in param_values:
-                self.token_params[param_name] = param_values['feature']
             # otherwise, this is a previous-prediction-type param, look those up and pass through
             elif 'layer' in param_values:
                 self.output_params[param_name] = param_values['layer'], param_values['output']
@@ -31,7 +32,6 @@ class FunctionDispatcher(keras.layers.Layer):
                 self.static_params[param_name] = {
                     map_name: joint_lookup_maps[map_name] for map_name in param_values['joint_maps']
                 }
-                # else: raise KeyError("Config requires vocab passed to FunctionDispatcher")
             else:
                 self.static_params[param_name] = param_values['value']
 
@@ -41,12 +41,24 @@ class FunctionDispatcher(keras.layers.Layer):
     def set_eval_mode(self):
         self.in_eval_mode = False
 
-    def call(self, features=None, outputs=None, tokens=None, labels=None, embeddings=None):
+    def call(self, data=None, outputs=None, labels=None, embeddings=None):
+        """
+        :param data: [features(Tensor), mask(Tensor)]
+        :param outputs: Dict
+        :param labels: Dict
+        :param embeddings: Dict
+        :return: function output
+        """
         labels = {key: labels.get(value) for key, value in self.label_params.items()} if labels else {}
         outputs = {key: outputs.get(layer_name, {}).get(field_name) for key, (layer_name, field_name) in self.output_params.items()} if outputs else {}
-        tokens = {key: tokens.get(value) for key, value in self.token_params.items()} if tokens else {}
         embeddings = {key: embeddings.get(value) for key, value in self.embedding_params.items()} if embeddings else {}
-        return self.make_call(features, **labels, **tokens, **outputs, **embeddings)
+        return self.make_call(data, **labels, **outputs, **embeddings)
 
-    def make_call(self, features, **kwargs):
+    def make_call(self, data, **kwargs):
+        """
+        Function-layer call method
+        :param data: [features(Tensor), mask(Tensor)]
+        :param kwargs: function arguments. Might contain excessive arguments  # todo arc do not pass it
+        :return:
+        """
         raise NotImplementedError

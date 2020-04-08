@@ -81,6 +81,9 @@ class ConditionalBilinearClassifier(L.Layer):
 
     def call(self, data):
         left, right, probs = data
+        # left: [BATCH_SIZE, SEQ_LEN, HID]  todo AG check all calls
+        # right: [BATCH_SIZE, SEQ_LEN, HID]
+        # probs: [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
         bilin = self.bilinear([left, right])
 
         input_shape = tf.shape(left)
@@ -93,5 +96,5 @@ class ConditionalBilinearClassifier(L.Layer):
             probs = tf.stop_gradient(probs)
 
         bilin = tf.reshape(bilin, [batch_size, bucket_size, self.n_outputs, bucket_size])
-        weighted_bilin = tf.squeeze(tf.matmul(bilin, tf.expand_dims(probs, 3)), -1)
+        weighted_bilin = tf.squeeze(tf.matmul(bilin, tf.expand_dims(probs, 3)), -1)  # [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
         return weighted_bilin, bilin
