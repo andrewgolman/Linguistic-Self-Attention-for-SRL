@@ -89,7 +89,7 @@ def convert_conll(predicted_roles):
 # -        (C-A1*  *
 # widen     *     (V*)
 # -         *     (A4*
-def write_srl_eval(filename, words, predicates, sent_lens, role_labels):
+def write_srl_eval(filename, words, predicates, sent_lens, role_labels, first_dim_from_batch=False):
   with open(filename, 'w') as f:
     role_labels_start_idx = 0
     num_predicates_per_sent = np.sum(predicates, -1)
@@ -97,23 +97,31 @@ def write_srl_eval(filename, words, predicates, sent_lens, role_labels):
     words = util.batch_str_decode(words)
 
     # for each sentence in the batch
-    for sent_words, sent_predicates, sent_len, sent_num_predicates in zip(words, predicates, sent_lens,
-                                                                          num_predicates_per_sent):
-      # grab predicates and convert to conll format from bio
-      # this is a sent_num_predicates x batch_seq_len array
-      sent_role_labels_bio = role_labels[role_labels_start_idx: role_labels_start_idx + sent_num_predicates]
+    for sent_id in range(words.shape[0]):
+        sent_words = words[sent_id]
+        sent_predicates = predicates[sent_id]
+        sent_len = sent_lens[sent_id]
+        sent_num_predicates = num_predicates_per_sent[sent_id]
 
-      # this is a list of sent_num_predicates lists of srl role labels
-      sent_role_labels = list(map(list, zip(*[convert_bilou(j[:sent_len]) for j in sent_role_labels_bio])))
-      role_labels_start_idx += sent_num_predicates
 
-      # for each token in the sentence
-      for j, (word, predicate) in enumerate(zip(sent_words[:sent_len], sent_predicates[:sent_len])):
-        tok_role_labels = sent_role_labels[j] if sent_role_labels else []
-        predicate_str = word if predicate else '-'
-        roles_str = '\t'.join(tok_role_labels)
-        print("%s\t%s" % (predicate_str, roles_str), file=f)
-      print(file=f)
+        # grab predicates and convert to conll format from bio
+        if first_dim_from_batch:
+            sent_role_labels_bio = role_labels[sent_id].transpose()
+        else:
+            # this is a sent_num_predicates x batch_seq_len array
+            sent_role_labels_bio = role_labels[role_labels_start_idx : role_labels_start_idx + sent_num_predicates]
+
+        # this is a list of sent_num_predicates lists of srl role labels
+        sent_role_labels = list(map(list, zip(*[convert_bilou(j[:sent_len]) for j in sent_role_labels_bio])))
+        role_labels_start_idx += sent_num_predicates
+
+        # for each token in the sentence
+        for j, (word, predicate) in enumerate(zip(sent_words[:sent_len], sent_predicates[:sent_len])):
+            tok_role_labels = sent_role_labels[j] if sent_role_labels else []
+            predicate_str = word if predicate else '-'
+            roles_str = '\t'.join(tok_role_labels)
+            print("%s\t%s" % (predicate_str, roles_str), file=f)
+        print(file=f)
 
 
 # Write to this format for eval.pl:
@@ -193,7 +201,7 @@ def conll_srl_eval(srl_predictions, predicate_predictions, words, mask, srl_targ
   # write_srl_debug(debug_fname, words, predicate_targets, sent_lens, srl_targets, pos_predictions, pos_targets)
 
   # write gold labels
-  # write_srl_eval(gold_srl_eval_file, words, predicate_targets, sent_lens, srl_targets)
+  write_srl_eval(gold_srl_eval_file, words, predicate_targets, sent_lens, srl_targets, first_dim_from_batch=True)
 
   # write predicted labels
   write_srl_eval(pred_srl_eval_file, words, predicate_predictions, sent_lens, srl_predictions)

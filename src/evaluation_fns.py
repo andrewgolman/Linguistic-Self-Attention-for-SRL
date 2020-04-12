@@ -1,8 +1,10 @@
 import tensorflow as tf
 import evaluation_fns_np
 import nn_utils
+import numpy as np
 
 EPS = 1e-20
+
 
 class EvalFunction:
     def __init__(self, task, config, reverse_maps=None):
@@ -57,7 +59,9 @@ class Accuracy(EvalFunction):
         :param mask: [BATCH_SIZE, SEQ_LEN]
         :return: todo AG ops or number?
         """
-        return 0  # tf.compat.v1.metrics.accuracy(labels=labels, predictions=outputs, weights=mask)
+        instance = tf.keras.metrics.Accuracy()
+        instance.update_state(labels, outputs, sample_weight=mask)
+        return instance.result().numpy()
 
 
 class ConllSrlEval(EvalFunction):
@@ -84,6 +88,7 @@ class ConllSrlEval(EvalFunction):
         str_pos_predictions = nn_utils.int_to_str_lookup_table(pos_predictions, reverse_maps['gold_pos'])
         str_pos_targets = nn_utils.int_to_str_lookup_table(pos_targets, reverse_maps['gold_pos'])
 
+
         # need to pass through the stuff for pyfunc
         # pyfunc is necessary here since we need to write to disk
         py_eval_inputs = [str_predictions, predicate_predictions, str_words, mask, str_targets, predicate_targets,
@@ -102,43 +107,39 @@ class ConllSrlEval(EvalFunction):
         f1 = 2 * precision * recall / (precision + recall + EPS)
 
         return f1
-g
+
 
 class ConllParseEval(EvalFunction):
-    def make_call(self, labels, outputs, mask, **kwargs):
-        return 0
+    def make_call(self, labels, outputs, mask, words, **kwargs):
+        reverse_maps = self.static_params['reverse_maps']
+        # todo AG wtf
+        parse_head_predictions = kwargs['parse_head_predictions']
+        parse_head_targets = kwargs['parse_head_targets']
+        gold_parse_eval_file = self.static_params['gold_parse_eval_file']
+        pred_parse_eval_file = self.static_params['pred_parse_eval_file']
+        pos_targets = kwargs['pos_targets']
 
-def conll_parse_eval_tf(predictions, targets, parse_head_predictions, words, mask, parse_head_targets, reverse_maps,
-                   gold_parse_eval_file, pred_parse_eval_file, pos_targets):
+        total_count = 0
+        correct_count = np.zeros(3)
 
-  with tf.name_scope('conll_parse_eval'):
+        str_words = nn_utils.int_to_str_lookup_table(words, reverse_maps['word'])
+        str_predictions = nn_utils.int_to_str_lookup_table(outputs, reverse_maps['parse_label'])
+        str_targets = nn_utils.int_to_str_lookup_table(labels, reverse_maps['parse_label'])
+        str_pos_targets = nn_utils.int_to_str_lookup_table(pos_targets, reverse_maps['gold_pos'])
 
-    # create accumulator variables
-    total_count = create_metric_variable("total_count", shape=[], dtype=tf.int64)
-    correct_count = create_metric_variable("correct_count", shape=[3], dtype=tf.int64)
+        # need to pass through the stuff for pyfunc
+        # pyfunc is necessary here since we need to write to disk
+        py_eval_inputs = [str_predictions, parse_head_predictions, str_words, mask, str_targets, parse_head_targets,
+                          pred_parse_eval_file, gold_parse_eval_file, str_pos_targets]
+        out_types = [tf.int64, tf.int64]
+        total, corrects = evaluation_fns_np.conll_parse_eval(*py_eval_inputs)
+        # total, corrects = tf.py_func(evaluation_fns_np.conll_parse_eval, py_eval_inputs, out_types, stateful=False)
 
-    str_words = nn_utils.int_to_str_lookup_table(words, reverse_maps['word'])
-    str_predictions = nn_utils.int_to_str_lookup_table(predictions, reverse_maps['parse_label'])
-    str_targets = nn_utils.int_to_str_lookup_table(targets, reverse_maps['parse_label'])
-    str_pos_targets = nn_utils.int_to_str_lookup_table(pos_targets, reverse_maps['gold_pos'])
+        total_count += total
+        correct_count += corrects
+        accuracies = correct_count / total_count
 
-    # need to pass through the stuff for pyfunc
-    # pyfunc is necessary here since we need to write to disk
-    py_eval_inputs = [str_predictions, parse_head_predictions, str_words, mask, str_targets, parse_head_targets,
-                      pred_parse_eval_file, gold_parse_eval_file, str_pos_targets]
-    out_types = [tf.int64, tf.int64]
-
-    total, corrects = evaluation_fns_np.conll_parse_eval(*py_eval_inputs)
-    # total, corrects = tf.py_func(evaluation_fns_np.conll_parse_eval, py_eval_inputs, out_types, stateful=False)
-
-    update_total_count_op = tf.assign_add(total_count, total)
-    update_correct_op = tf.assign_add(correct_count, corrects)
-
-    update_op = update_correct_op / update_total_count_op
-
-    accuracies = correct_count / total_count
-
-    return accuracies, update_op
+        return accuracies
 
 
 dispatcher = {
