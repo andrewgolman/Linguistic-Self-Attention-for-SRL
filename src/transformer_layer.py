@@ -1,22 +1,21 @@
 import tensorflow as tf
 import tensorflow.keras as keras
-import evaluation_fns
 import attention_fns
 from opennmt.layers import transformer as onmt_transformer
-from opennmt.layers.transformer import SelfAttentionEncoderLayer, MultiHeadAttention
+from opennmt.layers.transformer import SelfAttentionEncoderLayer, MultiHeadAttention, TransformerLayerWrapper
 # https://github.com/OpenNMT/OpenNMT-tf/blob/master/opennmt/layers/transformer.py#L339
 
 
 class MultiHeadAttentionWithSpecial(MultiHeadAttention):
 
-    def call(self, inputs, memory=None, mask=None, cache=None, training=None):
+    def call(self, inputs, memory=None, mask=None, cache=None, training=None, specials=None):
         """
         Runs the layer.
         This code is taken from the base class, with alterations regarding only special values
         Special attention heads and values replace normally calculated heads, so model can utilize outside data
         """
 
-        inputs, (special_attn, special_values) = inputs
+        special_attn, special_values = specials
 
         def _compute_kv(x):
             keys = self.linear_keys(x)
@@ -120,6 +119,15 @@ class SelfAttentionEncoderLayerWithSpecial(SelfAttentionEncoderLayer):
             num_units,
             dropout=attention_dropout,
          )
+        self.self_attention = TransformerLayerWrapper(
+            self.self_attention, dropout
+        )
+
+    def call(self, x, mask=None, training=None, specials=None):  # pylint: disable=arguments-differ
+        """Runs the encoder layer."""
+        y, _ = self.self_attention(x, mask=mask, training=training, specials=specials)
+        y = self.ffn(y, training=training)
+        return y
 
 
 class TransformerLayer(keras.layers.Layer):
@@ -186,5 +194,5 @@ class TransformerLayer(keras.layers.Layer):
         features, mask, outputs, labels = data
         special_attn, special_values = self.compute_special_attention(features, mask, outputs, labels)
 
-        features = self.sa_layer(inputs=[features, (special_attn, special_values)], mask=mask)
+        features = self.sa_layer(features, mask=mask, specials=(special_attn, special_values))
         return features
