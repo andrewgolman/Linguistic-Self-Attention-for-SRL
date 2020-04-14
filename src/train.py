@@ -7,7 +7,8 @@ import os
 import train_utils
 from vocab import Vocab
 from model import LISAModel
-from loss import LISAModelLoss
+from loss import LISAModelLoss, DummyLoss, SumLoss
+from evaluation_fns import EvalMetricsCallBack
 
 import numpy as np
 import util
@@ -49,42 +50,6 @@ arg_parser.set_defaults(debug=False, num_gpus=1, keep_k_best_models=1)
 
 args, leftovers = arg_parser.parse_known_args()
 
-util.init_logging(logging.INFO)
-
-# Load all the various configurations
-# todo: validate json
-data_config = train_utils.load_json_configs(args.data_config)
-model_config = train_utils.load_json_configs(args.model_configs)
-task_config = train_utils.load_json_configs(args.task_configs, args)
-layer_config = train_utils.load_json_configs(args.layer_configs)
-attention_config = train_utils.load_json_configs(args.attention_configs)
-
-# attention_config = {}
-# if args.attention_configs and args.attention_configs != '':
-#   attention_config = train_utils.load_json_configs(args.attention_configs)
-
-# Combine layer, task and layer, attention maps
-# todo save these maps in save_dir
-layer_task_config, layer_attention_config = util.combine_attn_maps(layer_config, attention_config, task_config)
-
-hparams = train_utils.load_hparams(args, model_config)
-
-# Set the random seed. This defaults to int(time.time()) if not otherwise set.
-np.random.seed(hparams.random_seed)
-tf.random.set_seed(hparams.random_seed)
-
-if not os.path.exists(args.save_dir):
-  os.makedirs(args.save_dir)
-
-train_filenames = args.train_files.split(',')
-dev_filenames = args.dev_files.split(',')
-
-vocab = Vocab(data_config, args.save_dir, train_filenames)
-vocab.update_vocab_files(dev_filenames)
-
-embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
-                   if 'pretrained_embeddings' in embeddings_map]
-
 
 def dev_batch_generator(preprocessor):
     # return train_utils.get_input_fn(vocab, data_config, dev_filenames, hparams.batch_size, num_epochs=1, shuffle=False,
@@ -93,6 +58,40 @@ def dev_batch_generator(preprocessor):
 
 
 def main():
+    util.init_logging(logging.INFO)
+
+    if not os.path.isdir(args.save_dir):
+        util.fatal_error("save_dir not found: %s" % args.save_dir)
+
+    # Load all the various configurations
+    data_config = train_utils.load_json_configs(args.data_config)
+    model_config = train_utils.load_json_configs(args.model_configs)
+    task_config = train_utils.load_json_configs(args.task_configs, args)
+    layer_config = train_utils.load_json_configs(args.layer_configs)
+    attention_config = train_utils.load_json_configs(args.attention_configs)
+
+    # Combine layer, task and layer, attention maps
+    # todo save these maps in save_dir
+    layer_task_config, layer_attention_config = util.combine_attn_maps(layer_config, attention_config, task_config)
+
+    hparams = train_utils.load_hparams(args, model_config)
+
+    # Set the random seed. This defaults to int(time.time()) if not otherwise set.
+    np.random.seed(hparams.random_seed)
+    tf.random.set_seed(hparams.random_seed)
+
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
+
+    train_filenames = args.train_files.split(',')
+    dev_filenames = args.dev_files.split(',')
+
+    vocab = Vocab(data_config, args.save_dir, train_filenames)
+    vocab.update_vocab_files(dev_filenames)
+
+    embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
+                       if 'pretrained_embeddings' in embeddings_map]
+
     # Generate mappings from feature/label names to indices in the model_fn inputs
     feature_idx_map, label_idx_map = util.load_feat_label_idx_maps(data_config)
 
@@ -105,38 +104,45 @@ def main():
 
     preprocessor = model.get_preprocessor_instance()
     optimizer = optim.Adam(
-        # learning_rate=this_step_lr,
-        beta_1=hparams.beta1,
-        beta_2=hparams.beta2,
-        epsilon=hparams.epsilon,
-        # clipnorm=hparams.gradient_clip_norm,  # todo AG
+        # learning_rate=1e-5,
+        # beta_1=hparams.beta1,
+        # beta_2=hparams.beta2,
+        # epsilon=hparams.epsilon,
+        clipnorm=hparams.gradient_clip_norm,
     )
-    lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
 
-    loss_instance = LISAModelLoss(model.output_layers, model.task_config)
+    # loss_instance = LISAModelLoss(model.output_layers, model.task_config, model.label_idx_map.keys())
 
+    output_len = len(model.task_list) + 1
+    losses = [DummyLoss()] * (output_len - 1) + [SumLoss()]
     model.compile(
         optimizer=optimizer,
-        loss=loss_instance
+        loss=losses,
     )
     batch_generator = train_utils.train_batch_generator(preprocessor,
                                           vocab, data_config, dev_filenames, num_epochs=1,
                                           shuffle=False,
                                           embedding_files=embedding_files,
-                                          batch_size=2)  # hparams.batch_size
-    batch, labels = next(batch_generator)
-    features, preds = model(batch)
+                                          batch_size=4)  # hparams.batch_size
+    val_data = next(batch_generator)
+    # print(len(val_data[0][0]))
+    # for i in range(10):
+    #     val_data = next(batch_generator)
+        # print(len(val_data[0][0]))
 
-    loss = loss_instance(labels, preds)
+    lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
+    eval_callback = EvalMetricsCallBack(validation_data=val_data)
 
-    print(loss)
+    # preds = model(val_data[0])
+    # loss = losses[-1](val_data[1], preds[-1])
 
-    # model.fit_generator(  # todo
-    #
-    #     epochs=5,
-    #     steps_per_epoch=100,
-    #     callbacks=[lr_schedule_callback],
-    # )
+
+    model.fit(
+        batch_generator,
+        epochs=200,
+        steps_per_epoch=2,
+        callbacks=[eval_callback],
+    )
 
 
 if __name__ == "__main__":

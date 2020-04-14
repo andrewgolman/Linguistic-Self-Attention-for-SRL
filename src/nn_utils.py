@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 import tensorflow.keras.backend as K
 import tensorflow.keras.layers as L
+from opennmt.utils.misc import shape_list
+
 
 def int_to_str_lookup_table(inputs, lookup_map):
   # todo order of map.values() is probably not guaranteed; should prob sort by keys first
@@ -22,6 +24,7 @@ class Bilinear(L.Layer):
         self.add_bias = add_bias
 
     def build(self, input_shape):
+        # todo AG check
         self.matrix_shape = input_shape[0][-1] + self.add_bias
         self.kernel = self.add_weight(
             name='kernel',
@@ -34,22 +37,23 @@ class Bilinear(L.Layer):
 
     def call(self, data):
         left, right = data
-        if self.add_bias:
-            left_bias_shape = left.get_shape().as_list()
-            left_bias_shape[-1] = 1
-            right_bias_shape = right.get_shape().as_list()
-            right_bias_shape[-1] = 1
 
+        if self.add_bias:
+            left_bias_shape = shape_list(left)
+            left_bias_shape[-1] = 1
+            right_bias_shape = shape_list(right)
+            right_bias_shape[-1] = 1
             left = K.concatenate([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=-1)
             right = K.concatenate([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=-1)
 
         lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
-        lin = tf.reshape(lin, [lin.shape[0], lin.shape[1] * self.output_size, lin.shape[2] // self.output_size])
+        lin_shape = shape_list(lin)
+        lin = K.reshape(lin, [-1, lin_shape[1] * self.output_size, lin_shape[2] // self.output_size])
         right = tf.transpose(right, [0, 2, 1])
         bilin = tf.matmul(lin, right)
-        bilin = tf.reshape(bilin, [bilin.shape[0], bilin.shape[1] // self.output_size, self.output_size, bilin.shape[-1]])
+        bilin_shape = shape_list(bilin)
+        bilin = K.reshape(bilin, [bilin_shape[0], bilin_shape[1] // self.output_size, self.output_size, bilin_shape[-1]])
         return bilin
-
 
 
 class BilinearClassifier(L.Layer):

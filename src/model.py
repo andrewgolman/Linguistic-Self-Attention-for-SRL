@@ -27,6 +27,7 @@ class LISAModel(keras.models.Model):
         self.layer_config = self.model_config['layers']
 
         self.items_to_log = {}
+        self.task_list = sum([list(v.keys()) for v in self.task_config.values()], [])
 
         self.num_layers = max(self.task_config.keys()) + 1
 
@@ -35,15 +36,17 @@ class LISAModel(keras.models.Model):
         # todo don't save it
 
         self.init_layers()
+        self.init_metrics()
+        self.custom_eval = False
 
         logging.log(logging.INFO,
                     "Created model with {} trainable parameters".format(util.count_model_params(self)))
 
     def init_layers(self):
-        self.initial_dropout = L.Dropout(self.hparams.input_dropout)
-        self.layer_norm = L.LayerNormalization(epsilon=1e-6)
+        self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)
+        self.layer_norm = L.LayerNormalization()  # epsilon=1e-6
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
-        self.dense1 = L.Dense(sa_hidden_size)
+        self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
         self.transformer_layers = [
             transformer_layer.TransformerLayer(i+1, self.task_config.get(i),
@@ -67,8 +70,8 @@ class LISAModel(keras.models.Model):
                     hparams=self.hparams,
                 )
 
-    def get_metrics(self):
-        metrics = []
+    def init_metrics(self):
+        self.custom_metrics = []
         for layer_id in self.task_config:
             for task, params in self.task_config[layer_id].items():
                 for eval_name, eval_map in params['eval_fns'].items():
@@ -78,9 +81,7 @@ class LISAModel(keras.models.Model):
                         config=eval_map,
                         reverse_maps=self.vocab.reverse_maps,
                     )
-                    metrics.append(fn)
-
-        return metrics
+                    self.custom_metrics.append(fn)
 
     def call(self, data):
         """
@@ -88,14 +89,19 @@ class LISAModel(keras.models.Model):
             features: [BATCH_SIZE, SEQ_LEN, HID]
             mask: [BATCH_SIZE, SEQ_LEN]
             labels: Dict{task : [BATCH_SIZE, SEQ_LEN]} (for srl: [..., 9])
-            data
-        :return: features, tokens, mask, predictions
+            tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
+        :return: predictions
         """
-        features, mask, labels, tokens = data
+        features = data[0]
+        mask = data[1]
+        labels = data[2:2+len(self.label_idx_map)]
+        tokens = data[2+len(self.label_idx_map):]
+        labels = util.list2dict(labels, self.label_idx_map)
+        tokens = util.list2dict(tokens, self.feature_idx_map)
 
-        predictions = {
+        outputs = {
             'mask': mask,  # loss needs it
-            'tokens': tokens  # todo AG how come we need it
+            'tokens': tokens,  # todo AG how come we need it
         }
 
         features = self.initial_dropout(features)
@@ -103,25 +109,65 @@ class LISAModel(keras.models.Model):
         features = self.positional_encoder(features)  # [BATCH_SIZE, SEQ_LEN, SA_HID==NUM_HEADS * HEAD_DIM]
 
         for i in range(self.num_layers):
-            features = self.transformer_layers[i]([features, mask, predictions, labels])
+            # features = self.transformer_layers[i]([features, mask, outputs, labels])
 
             # if normalization is done in layer_preprocess, then it should also be done
             # on the output, since the output can grow very large, being the sum of
             # a whole stack of unnormalized layer outputs.
             predict_features = self.layer_norm(features)
 
-            for task, layer in self.output_layers.items():
+            for task, layer in self.output_layers.items():  # copies
                 if layer.transformer_layer_id == i:
-                    predictions[task] = self.output_layers[task](
+                    outputs[task] = self.output_layers[task](
                         [predict_features, mask],
-                        outputs=predictions,
+                        outputs=outputs,
                         labels=labels,
                     )  # todo doc
 
-        return features, predictions
+        losses = self.model_loss(labels, outputs)
+
+        if self.custom_eval:
+            metrics = self.eval_metrics(labels, outputs)
+            return outputs, metrics, losses
+        else:
+            predictions = self.outputs_to_predictions(outputs)
+            return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
+
+    def outputs_to_predictions(self, outputs):
+        return [
+            outputs[task]['predictions'] for task in self.task_list
+        ]
 
     def get_preprocessor_instance(self):
-        return LISAModelPreprocess(self.feature_idx_map, self.label_idx_map, self.model_config, self.vocab)
+        return LISAModelPreprocess(
+            self.feature_idx_map, self.label_idx_map, self.model_config, self.label_idx_map.keys(), self.vocab)
+
+    def model_loss(self, labels, predictions):
+        loss = []
+
+        for task_data in self.task_config.values():
+            for task, task_map in task_data.items():
+                this_output_layer = self.output_layers[task]
+                this_task_loss = this_output_layer.loss(labels[task], predictions[task], mask=predictions['mask'])
+
+                loss.append(
+                    this_task_loss * task_map['penalty']
+                )
+
+        return loss
+
+    def eval_metrics(self, labels, outputs):
+        scores = {}
+        for metric in self.custom_metrics:
+            scores[(metric.task, metric.name)] = metric(labels, outputs)
+        return scores
+
+    def start_custom_eval(self):
+        self.custom_eval = True
+
+    def end_custom_eval(self):
+        self.custom_eval = False
+
 
 
 # def train_step(self):

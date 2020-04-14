@@ -6,11 +6,11 @@ import tensorflow.compat.v1.logging as logging
 
 # todo AG check that embeddings can be trained
 class LISAModelPreprocess:
-    def __init__(self, feature_idx_map, label_idx_map, model_config, vocab):
-        self.model_config = model_config
+    def __init__(self, feature_idx_map, label_idx_map, model_config, task_list, vocab):
         self.feature_idx_map = feature_idx_map
         self.label_idx_map = label_idx_map
-        self.embeddings = self.get_embeddings()
+        self.model_config = model_config
+        self.task_list = task_list
         self.vocab = vocab
         self.embeddings = self.get_embeddings()
 
@@ -62,6 +62,7 @@ class LISAModelPreprocess:
         batch_seq_len = batch_shape[1]
 
         features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
+
         # ES todo this assumes that word_type is always passed in
         words = features['word_type']
 
@@ -70,6 +71,7 @@ class LISAModelPreprocess:
                         tf.ones([batch_size, batch_seq_len]))
         # Extract named features from monolithic "features" input
         features = {f: tf.multiply(tf.cast(mask, tf.int32), v) for f, v in features.items()}
+        tokens = features.copy()
 
         # Extract named labels from monolithic "features" input, and mask them
         # ES todo fix masking -- is it even necessary?
@@ -94,4 +96,8 @@ class LISAModelPreprocess:
             for input_name in self.model_config['inputs']  # word type and/or predicate
         ]
         features = tf.concat(features, axis=2)
-        return (features, mask, labels), labels
+
+        labels = util.dict2list(labels, self.label_idx_map.keys())
+        tokens = util.dict2list(tokens, self.feature_idx_map.keys())
+
+        return [features, mask, *labels, *tokens], [0, 0, 0, 0]  # todo AG np.zeros(len(task_list) + 1)

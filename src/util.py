@@ -129,3 +129,13 @@ def count_model_params(model):
     # trainable_count = count_params(model.trainable_weights)
     # non_trainable_count = count_params(model.non_trainable_weights)
     return "TODO"  # trainable_count, non_trainable_count
+
+
+def dict2list(d, keys):  # pass keys explicitly for safety
+    return [d.get(k, 0) for k in sorted(keys)]
+
+
+def list2dict(l, keys):
+    # assert len(l) == len(keys), (len(l), keys)
+    keys = sorted(keys)
+    return {keys[i]: l[i] for i in range(len(keys))}

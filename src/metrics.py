@@ -1,7 +1,9 @@
 import tensorflow as tf
+import numpy as np
+
 import evaluation_fns_np
 import nn_utils
-import numpy as np
+import util
 
 EPS = 1e-20
 
@@ -13,22 +15,20 @@ class EvalFunction:
         self.label_params = {}
         self.token_params = {}
         self.output_params = {}
-        self.requires_transformation = 'params' in config
 
-        if self.requires_transformation:
-            for param_name, param_values in config['params'].items():
-                if 'label' in param_values:
-                    self.label_params[param_name] = param_values['label']
-                elif 'feature' in param_values:
-                    self.token_params[param_name] = param_values['feature']
-                elif 'layer' in param_values:
-                    self.output_params[param_name] = param_values['layer'], param_values['output']
-                elif 'reverse_maps' in param_values:
-                    self.static_params[param_name] = {
-                        map_name: reverse_maps[map_name] for map_name in param_values['reverse_maps']
-                    }
-                else:
-                    self.static_params[param_name] = param_values['value']
+        for param_name, param_values in config.get('params', {}).items():
+            if 'label' in param_values:
+                self.label_params[param_name] = param_values['label']
+            elif 'feature' in param_values:
+                self.token_params[param_name] = param_values['feature']
+            elif 'layer' in param_values:
+                self.output_params[param_name] = param_values['layer'], param_values['output']
+            elif 'reverse_maps' in param_values:
+                self.static_params[param_name] = {
+                    map_name: reverse_maps[map_name] for map_name in param_values['reverse_maps']
+                }
+            else:
+                self.static_params[param_name] = param_values['value']
 
     def __call__(self, labels, predictions):
         task_outputs = predictions[self.task]['predictions']
@@ -52,6 +52,8 @@ class EvalFunction:
 
 
 class Accuracy(EvalFunction):
+    name = "Accuracy"
+
     def make_call(self, labels, outputs, mask, **kwargs):
         """
         :param labels: [BATCH_SIZE, SEQ_LEN]
@@ -65,16 +67,14 @@ class Accuracy(EvalFunction):
 
 
 class ConllSrlEval(EvalFunction):
-    def make_call(self, labels, outputs, mask, words, **kwargs):
+    name = "ConllSrlEval"
+
+    def make_call(self, labels, outputs, mask, words,
+                  predicate_predictions, predicate_targets, pos_predictions, pos_targets, **kwargs):
 
         reverse_maps = self.static_params['reverse_maps']
-        # todo AG wtf
-        predicate_predictions = kwargs['predicate_predictions']
-        predicate_targets = kwargs['predicate_targets']
         gold_srl_eval_file = self.static_params['gold_srl_eval_file']
         pred_srl_eval_file = self.static_params['pred_srl_eval_file']
-        pos_predictions = kwargs['pos_predictions']
-        pos_targets = kwargs['pos_targets']
 
         # create accumulator variables
         correct_count = 0
@@ -110,14 +110,13 @@ class ConllSrlEval(EvalFunction):
 
 
 class ConllParseEval(EvalFunction):
-    def make_call(self, labels, outputs, mask, words, **kwargs):
+    name = "ConllParseEval"
+
+    def make_call(self, labels, outputs, mask, words,
+                  parse_head_predictions, parse_head_targets, pos_targets, **kwargs):
         reverse_maps = self.static_params['reverse_maps']
-        # todo AG wtf
-        parse_head_predictions = kwargs['parse_head_predictions']
-        parse_head_targets = kwargs['parse_head_targets']
         gold_parse_eval_file = self.static_params['gold_parse_eval_file']
         pred_parse_eval_file = self.static_params['pred_parse_eval_file']
-        pos_targets = kwargs['pos_targets']
 
         total_count = 0
         correct_count = np.zeros(3)
@@ -147,3 +146,50 @@ dispatcher = {
   'conll_srl_eval': ConllSrlEval,
   'conll_parse_eval': ConllParseEval,
 }
+
+
+class CallMetricsCallback(tf.keras.callbacks.Callback):
+    """
+    todo docs
+    """
+    def __init__(self, metrics, validation_data):
+        super(CallMetricsCallback, self).__init__()
+        self.metrics = metrics
+        self.X_val, self.Y_val = validation_data
+
+    def run_eval(self):
+        Y_pred = self.model.predict(self.X_val)
+        scores = {}
+        for metric in self.metrics:
+            scores[(metric.task, metric.name)] = metric(self.Y_val, Y_pred)
+        return scores
+
+    def on_epoch_end(self, epoch, logs={}):
+        scores = self.run_eval()
+        print("EPOCH:", epoch)
+        for k, v in scores.items():
+            print(k, ":", v)
+
+
+class EvalMetricsCallBack(tf.keras.callbacks.Callback):
+    """
+    todo docs
+    """
+    def __init__(self, validation_data):
+        super(EvalMetricsCallBack, self).__init__()
+        self.X_val, _ = validation_data  # labels are currently meaningless
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.model.start_custom_eval()
+
+        outputs, metrics, losses = self.model(self.X_val)
+        print("=" * 20)
+        print("EPOCH:", epoch)
+        print("Validation losses:")
+        for i, v in enumerate(losses):
+            print(i, ":", v)
+        print("Validation metrics:")
+        for k, v in metrics.items():
+            print(k, ":", v)
+
+        self.model.end_custom_eval()

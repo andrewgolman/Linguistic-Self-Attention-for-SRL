@@ -3,6 +3,7 @@ import nn_utils
 import tensorflow.keras.layers as L
 from base_fns import FunctionDispatcher
 from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood
+from opennmt.utils.misc import shape_list
 
 
 class OutputLayer(FunctionDispatcher):
@@ -10,23 +11,33 @@ class OutputLayer(FunctionDispatcher):
         super(OutputLayer, self).__init__(task_map, **params)
         self.transformer_layer_id = transformer_layer_id
         self.hparams = params['hparams']
-        if task_map.get('viterbi') or task_map.get('crf'):
-            self.static_params['transition_params'] = tf.convert_to_tensor(self.static_params['transition_params'])
-        else:
-            self.static_params['transition_params'] = None
+        # if task_map.get('viterbi') or task_map.get('crf'):
+        # todo AG do not save everywhere
+        if self.static_params['transition_params'] is not None:
+            self.static_params['transition_params'] = tf.convert_to_tensor(
+                self.static_params['transition_params'], dtype=tf.float32)
 
     def make_call(self, data, **params):
-      raise NotImplementedError
+        raise NotImplementedError
 
     def loss(self, targets, output, mask):
-      raise NotImplementedError
+        raise NotImplementedError
+
+    def keys(self):
+        raise NotImplementedError
 
 
 class SoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, task_vocab_size, **params):
         super(SoftmaxClassifier, self).__init__(transformer_layer_id, **params)
         self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense = L.Dense(task_vocab_size)
+        self.dense = L.Dense(task_vocab_size, activation=L.LeakyReLU(alpha=0.1))
+
+        self.loss = tf.keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True,
+            label_smoothing=self.hparams.label_smoothing,
+            reduction=tf.keras.losses.Reduction.SUM,
+        )
 
     def make_call(self, data, **kwargs):
         features, mask = data
@@ -42,15 +53,22 @@ class SoftmaxClassifier(OutputLayer):
         }
         return output
 
+    def keys(self):
+        return [
+            'predictions',
+            'scores',
+            'probabilities',
+        ]
+
     def loss(self, targets, output, mask):
         logits = output['scores']
         n_labels = self.static_params['task_vocab_size']
-        targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
-        return tf.compat.v1.losses.softmax_cross_entropy(logits=tf.reshape(logits, [-1, n_labels]),
-                                               onehot_labels=tf.reshape(targets_onehot, [-1, n_labels]),
-                                               weights=tf.reshape(mask, [-1]),
-                                               label_smoothing=self.hparams.label_smoothing,
-                                               reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
+        # targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
+        return self.loss(
+            y_pred=tf.reshape(logits, [-1, n_labels]),
+            y_true=tf.reshape(targets, [-1]),
+            sample_weight=tf.reshape(mask, [-1])
+        )
 
         # return losses.sparse_categorical_cross_entropy(y_true, y_pred)
 
@@ -58,9 +76,11 @@ class SoftmaxClassifier(OutputLayer):
 class JointSoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, **params):
         super(JointSoftmaxClassifier, self).__init__(transformer_layer_id, **params)
-        self.dense1 = L.Dense(self.static_params['model_config']['predicate_pred_mlp_size'])
+        self.dense1 = L.Dense(self.static_params['model_config']['predicate_pred_mlp_size'],
+                              activation=L.LeakyReLU(alpha=0.1))
         self.dropout1 = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense2 = L.Dense(self.static_params['task_vocab_size'])
+        self.dense2 = L.Dense(self.static_params['task_vocab_size'],
+                              activation=L.LeakyReLU(alpha=0.1))
         self.dropout2 = L.Dropout(1 - self.hparams.mlp_dropout)
 
     def get_separate_scores_preds_from_joint(self, joint_outputs, joint_num_labels):
@@ -106,10 +126,17 @@ class JointSoftmaxClassifier(OutputLayer):
 
         n_labels = self.static_params['task_vocab_size']
         # now get separate-task scores and predictions for each of the maps we've passed through
-        separate_output = self.get_separate_scores_preds_from_joint(output, n_labels)
-        output.update(separate_output)
+        # separate_output = self.get_separate_scores_preds_from_joint(output, n_labels)
+        # output.update(separate_output)
 
         return output
+
+    def keys(self):
+        return [
+            'predictions',
+            'scores',
+            'probabilities',
+        ]
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -124,7 +151,8 @@ class ParseBilinear(OutputLayer):
         self.class_mlp_size = self.static_params['model_config']['class_mlp_size']
         self.attn_mlp_size = self.static_params['model_config']['attn_mlp_size']
         self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense1 = L.Dense(2 * (self.class_mlp_size + self.attn_mlp_size))
+        self.dense1 = L.Dense(2 * (self.class_mlp_size + self.attn_mlp_size),
+                              activation=L.LeakyReLU(alpha=0.1))
         self.bilinear = nn_utils.BilinearClassifier(1, 1 - self.hparams.bilinear_dropout)
 
     def make_call(self, data, **kwargs):
@@ -154,6 +182,15 @@ class ParseBilinear(OutputLayer):
 
         return output
 
+    def keys(self):
+        return [
+            'predictions',
+            'probabilities',
+            'scores',
+            'dep_rel_mlp',
+            'head_rel_mlp',
+        ]
+
     def loss(self, targets, output, mask):
         logits = output['scores']
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
@@ -170,7 +207,7 @@ class ConditionalBilinear(OutputLayer):
         )
 
     def make_call(self, data, dep_rel_mlp, head_rel_mlp, parse_preds_train, parse_preds_eval, **kwargs):
-        # todo AG check if we unpack agruments or ignore data
+        # data is ingored, utilizing previous outputs/labels
         parse_preds = parse_preds_train if not self.in_eval_mode else parse_preds_eval
         logits, _ = self.cond_bilinear([dep_rel_mlp, head_rel_mlp, parse_preds])
         predictions = tf.argmax(logits, -1)
@@ -183,6 +220,13 @@ class ConditionalBilinear(OutputLayer):
         }
 
         return output
+
+    def keys(self):
+        return [
+            'predictions',
+            'scores',
+            'probabilities',
+        ]
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -199,15 +243,13 @@ class SRLBilinear(OutputLayer):
         self.role_mlp_size = self.static_params['model_config']['role_mlp_size']
 
         self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense1 = L.Dense(self.predicate_mlp_size + self.role_mlp_size)
+        self.dense1 = L.Dense(self.predicate_mlp_size + self.role_mlp_size,
+                              activation=L.LeakyReLU(alpha=0.1))
 
         self.bilinear = nn_utils.BilinearClassifier(
             self.static_params['task_vocab_size'],
             1 - self.hparams.bilinear_dropout
         )
-
-    def slice(self):
-        pass
 
     @staticmethod
     def bool_mask_where_predicates(predicates_tensor, mask):
@@ -256,12 +298,12 @@ class SRLBilinear(OutputLayer):
 
         # now multiply them together to get (num_predicates_in_batch x batch_seq_len x num_srl_classes) tensor of scores
         srl_logits = self.bilinear([gathered_predicates, gathered_roles])  # [PRED_COUNT, bilin_output_size, SEQ_LEN]
-        logits_shape = srl_logits.get_shape()
+        logits_shape = shape_list(srl_logits)
         srl_logits = tf.reshape(srl_logits, [-1, logits_shape[2], logits_shape[3]])
         srl_logits_transposed = tf.transpose(srl_logits, [0, 2, 1])  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
 
         # num_predicates_in_batch x seq_len
-        predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN]
+        predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN] (role for each word for each predicate)
 
         # todo AG check
         # seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)
@@ -277,23 +319,33 @@ class SRLBilinear(OutputLayer):
             'scores': srl_logits_transposed,  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
             # 'targets': srl_targets_gold_predicates,
             'probabilities': tf.nn.softmax(srl_logits_transposed, -1),  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
-            'params': {
-                'predicate_preds': predicate_preds,
-                'batch_seq_len': batch_seq_len,
-                'batch_size': batch_size,
-                'predicate_targets': predicate_targets,
-            }
+            'predicate_preds': predicate_preds,
+            'batch_seq_len': batch_seq_len,
+            'batch_size': batch_size,
+            'predicate_targets': predicate_targets,
         }
 
         return output
 
+    def keys(self):
+        return [
+            'predictions',
+            'scores',
+            'probabilities',
+            'predicate_preds',
+            'batch_seq_len',
+            'batch_size',
+            'predicate_targets',
+        ]
+
     def loss(self, targets, output, mask):
+        return 0.
         srl_logits_transposed = output['scores']
         num_labels = self.static_params['task_vocab_size']
-        predicate_preds = output['params']['predicate_preds']
-        batch_seq_len = output['params']['batch_seq_len']
-        batch_size = output['params']['batch_size']
-        predicate_targets = output['params']['predicate_targets']
+        predicate_preds = output['predicate_preds']
+        batch_seq_len = output['batch_seq_len']
+        batch_size = output['batch_size']
+        predicate_targets = output['predicate_targets']
         seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)
         transition_params = self.static_params['transition_params']
 
@@ -326,14 +378,16 @@ class SRLBilinear(OutputLayer):
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(predicted_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_pred_indices)
 
-        if transition_params is not None and not self.in_eval_mode:
+        if transition_params is not None and not self.in_eval_mode:  # todo AG update transition params?
             log_likelihood, transition_params = crf_log_likelihood(
                 srl_logits_transposed,
                 srl_targets_predicted_predicates,
-                seq_lens, transition_params
+                tf.repeat(seq_lens, gold_predicate_counts),  # todo AG what happens on inference when preds don't match
+                transition_params
             )
             loss = tf.reduce_mean(-log_likelihood)
         else:
+            assert False
             srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
             loss = tf.compat.v1.losses.softmax_cross_entropy(
                 logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
