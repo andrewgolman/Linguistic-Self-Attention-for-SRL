@@ -126,8 +126,8 @@ class JointSoftmaxClassifier(OutputLayer):
 
         n_labels = self.static_params['task_vocab_size']
         # now get separate-task scores and predictions for each of the maps we've passed through
-        # separate_output = self.get_separate_scores_preds_from_joint(output, n_labels)
-        # output.update(separate_output)
+        separate_output = self.get_separate_scores_preds_from_joint(output, n_labels)
+        output.update(separate_output)
 
         return output
 
@@ -339,7 +339,6 @@ class SRLBilinear(OutputLayer):
         ]
 
     def loss(self, targets, output, mask):
-        return 0.
         srl_logits_transposed = output['scores']
         num_labels = self.static_params['task_vocab_size']
         predicate_preds = output['predicate_preds']

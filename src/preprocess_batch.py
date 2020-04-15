@@ -100,4 +100,4 @@ class LISAModelPreprocess:
         labels = util.dict2list(labels, self.label_idx_map.keys())
         tokens = util.dict2list(tokens, self.feature_idx_map.keys())
 
-        return [features, mask, *labels, *tokens], [0, 0, 0, 0]  # todo AG np.zeros(len(task_list) + 1)
+        return [features, mask, *labels, *tokens], [0] * (len(self.task_list) + 1)

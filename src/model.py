@@ -2,13 +2,20 @@ import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow.keras.layers as L
 import tensorflow.compat.v1.logging as logging
-import evaluation_fns
+import metrics
 import output_fns
 import util
 import transformer_layer
 from preprocess_batch import LISAModelPreprocess
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
+
+
+# https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
+# class NotTrackableDict(tf.python.training.tracking.tracking.NotTrackable):
+#     def __init__(self, data):
+#         super(NotTrackableDict, self).__init__()
+#         self.data = data
 
 
 class LISAModel(keras.models.Model):
@@ -27,7 +34,7 @@ class LISAModel(keras.models.Model):
         self.layer_config = self.model_config['layers']
 
         self.items_to_log = {}
-        self.task_list = sum([list(v.keys()) for v in self.task_config.values()], [])
+        self.task_list = sum([list(v.keys()) for v in task_config.values()], [])
 
         self.num_layers = max(self.task_config.keys()) + 1
 
@@ -76,7 +83,7 @@ class LISAModel(keras.models.Model):
             for task, params in self.task_config[layer_id].items():
                 for eval_name, eval_map in params['eval_fns'].items():
                     name = eval_map['name']
-                    fn = evaluation_fns.dispatcher[name](
+                    fn = metrics.dispatcher[name](
                         task=task,
                         config=eval_map,
                         reverse_maps=self.vocab.reverse_maps,
@@ -109,7 +116,7 @@ class LISAModel(keras.models.Model):
         features = self.positional_encoder(features)  # [BATCH_SIZE, SEQ_LEN, SA_HID==NUM_HEADS * HEAD_DIM]
 
         for i in range(self.num_layers):
-            # features = self.transformer_layers[i]([features, mask, outputs, labels])
+            features = self.transformer_layers[i]([features, mask, outputs, labels])
 
             # if normalization is done in layer_preprocess, then it should also be done
             # on the output, since the output can grow very large, being the sum of
@@ -140,7 +147,7 @@ class LISAModel(keras.models.Model):
 
     def get_preprocessor_instance(self):
         return LISAModelPreprocess(
-            self.feature_idx_map, self.label_idx_map, self.model_config, self.label_idx_map.keys(), self.vocab)
+            self.feature_idx_map, self.label_idx_map, self.model_config, self.task_list, self.vocab)
 
     def model_loss(self, labels, predictions):
         loss = []

@@ -8,7 +8,7 @@ import util
 EPS = 1e-20
 
 
-class EvalFunction:
+class BaseMetric:
     def __init__(self, task, config, reverse_maps=None):
         self.task = task
         self.static_params = {}
@@ -51,7 +51,7 @@ class EvalFunction:
         raise NotImplementedError
 
 
-class Accuracy(EvalFunction):
+class Accuracy(BaseMetric):
     name = "Accuracy"
 
     def make_call(self, labels, outputs, mask, **kwargs):
@@ -66,7 +66,7 @@ class Accuracy(EvalFunction):
         return instance.result().numpy()
 
 
-class ConllSrlEval(EvalFunction):
+class ConllSrlEval(BaseMetric):
     name = "ConllSrlEval"
 
     def make_call(self, labels, outputs, mask, words,
@@ -109,7 +109,7 @@ class ConllSrlEval(EvalFunction):
         return f1
 
 
-class ConllParseEval(EvalFunction):
+class ConllParseEval(BaseMetric):
     name = "ConllParseEval"
 
     def make_call(self, labels, outputs, mask, words,
@@ -171,6 +171,17 @@ class CallMetricsCallback(tf.keras.callbacks.Callback):
             print(k, ":", v)
 
 
+def print_model_metrics(model, X_val):
+    outputs, metrics, losses = model(X_val)
+
+    print("Validation losses:")
+    for i, v in enumerate(losses):
+        print(i, ":", v)
+    print("Validation metrics:")
+    for k, v in metrics.items():
+        print(k, ":", v)
+
+
 class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     """
     todo docs
@@ -181,15 +192,7 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs={}):
         self.model.start_custom_eval()
-
-        outputs, metrics, losses = self.model(self.X_val)
         print("=" * 20)
-        print("EPOCH:", epoch)
-        print("Validation losses:")
-        for i, v in enumerate(losses):
-            print(i, ":", v)
-        print("Validation metrics:")
-        for k, v in metrics.items():
-            print(k, ":", v)
-
+        print("EPOCH:", epoch + 1)
+        print_model_metrics(self.model, self.X_val)
         self.model.end_custom_eval()
