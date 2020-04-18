@@ -50,11 +50,16 @@ def reformat_bio_file(input_file, output_file):
             fields = line.strip().split("\t")
             fields[9], fields[10] = fields[10], fields[9]
             fields.pop(-1)
+            for i in range(14, len(fields)):
+                fields[i] = fields[i].split("/")[0]
+                fields[i] = fields[i].replace("C-", "").replace("R-", "")
+
             line = "\t".join(fields)
             print(line, file=fout)
 
 
 def main(file):
+    print("INFO: reformating fields in file", file)
     res_file = file[:-4]+".lisa"
     reformat_bio_file(file, res_file)
 

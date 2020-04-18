@@ -14,4 +14,3 @@
 # ./bin/convert-bio.sh conll2012-dev.txt
 # ./bin/convert-bio.sh conll2012-train.txt
 
-# python ./bin/compute_transition_probs.py --in_file_name conll2012-train.txt.bio > transition_probs.tsv
