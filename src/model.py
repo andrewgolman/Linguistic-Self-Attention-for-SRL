@@ -6,7 +6,7 @@ import metrics
 import output_fns
 import util
 import transformer_layer
-from preprocess_batch import LISAModelPreprocess
+import constants
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
 
@@ -19,7 +19,7 @@ from opennmt.layers.position import SinusoidalPositionEncoder
 
 
 class LISAModel(keras.models.Model):
-
+    # INITIALIZATION PART
     def __init__(self, hparams, model_config, task_config, attention_config,
                  feature_idx_map, label_idx_map, vocab):
         super(LISAModel, self).__init__()
@@ -44,6 +44,7 @@ class LISAModel(keras.models.Model):
 
         self.init_layers()
         self.init_metrics()
+        self.embeddings = self.get_embeddings()
         self.custom_eval = False
 
         logging.log(logging.INFO,
@@ -90,21 +91,107 @@ class LISAModel(keras.models.Model):
                     )
                     self.custom_metrics.append(fn)
 
-    def call(self, data):
+    def get_embedding_table(self, name, embedding_dim, include_oov, pretrained_fname=None, num_embeddings=None):
         """
-        :param data:
+        AG: get table, check dimension, add oov and convert to tensor
+        """
+        if pretrained_fname:
+            pretrained_embeddings = util.load_pretrained_embeddings(pretrained_fname)
+            pretrained_num_embeddings, pretrained_embedding_dim = pretrained_embeddings.shape
+            if pretrained_embedding_dim != embedding_dim:
+                util.fatal_error("Pre-trained %s embedding dim does not match specified dim (%d vs %d)." %
+                                 (name, pretrained_embedding_dim, embedding_dim))
+            if num_embeddings and num_embeddings != pretrained_num_embeddings:
+                util.fatal_error("Number of pre-trained %s embeddings does not match specified "
+                                 "number of embeddings (%d vs %d)." % (name, pretrained_num_embeddings, num_embeddings))
+            embedding_table = tf.convert_to_tensor(pretrained_embeddings, dtype=tf.float32)
+        else:
+           embedding_table = tf.random.normal(shape=[num_embeddings, embedding_dim])
+
+        if include_oov:
+            oov_embedding = tf.random.normal(shape=[1, embedding_dim])
+            embedding_table = tf.concat([embedding_table, oov_embedding], axis=0)
+
+        return embedding_table
+
+    def get_embeddings(self):
+        # Create embeddings tables, loading pre-trained if specified
+        embeddings = {}
+        for embedding_name, embedding_map in self.model_config['embeddings'].items():
+            embedding_dim = embedding_map['embedding_dim']
+            if 'pretrained_embeddings' in embedding_map:
+                input_pretrained_embeddings = embedding_map['pretrained_embeddings']
+                include_oov = True
+                embedding_table = self.get_embedding_table(embedding_name, embedding_dim, include_oov,
+                                                         pretrained_fname=input_pretrained_embeddings)
+            else:
+                num_embeddings = self.vocab.vocab_names_sizes[embedding_name]
+                include_oov = self.vocab.oovs[embedding_name]
+                embedding_table = self.get_embedding_table(embedding_name, embedding_dim, include_oov,
+                                                       num_embeddings=num_embeddings)
+            embeddings[embedding_name] = embedding_table
+            logging.log(logging.INFO, "Created embeddings for '%s'." % embedding_name)
+        return embeddings
+
+    # RUNNING PART
+    def preprocess_batch(self, batch):
+        batch_shape = tf.shape(batch)
+        batch_size = batch_shape[0]
+        batch_seq_len = batch_shape[1]
+
+        features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
+
+        # ES todo this assumes that word_type is always passed in
+        words = features['word_type']
+
+        # for masking out padding tokens
+        mask = tf.where(tf.equal(words, constants.PAD_VALUE), tf.zeros([batch_size, batch_seq_len]),
+                        tf.ones([batch_size, batch_seq_len]))
+        # Extract named features from monolithic "features" input
+        features = {f: tf.multiply(tf.cast(mask, tf.int32), v) for f, v in features.items()}
+        tokens = features.copy()
+
+        # Extract named labels from monolithic "features" input, and mask them
+        # ES todo fix masking -- is it even necessary?
+        labels = {}
+        for l, idx in self.label_idx_map.items():
+            these_labels = batch[:, :, idx[0]:idx[1]] if idx[1] != -1 else batch[:, :, idx[0]:]
+            these_labels_masked = tf.multiply(these_labels, tf.cast(tf.expand_dims(mask, -1), tf.int32))
+            # check if we need to mask another dimension
+            if idx[1] == -1:
+                last_dim = tf.shape(these_labels)[2]
+                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE),
+                                     tf.zeros([batch_size, batch_seq_len, last_dim], dtype=tf.int32),
+                                     tf.ones([batch_size, batch_seq_len, last_dim], dtype=tf.int32))
+                these_labels_masked = tf.multiply(these_labels_masked, this_mask)
+            else:
+                these_labels_masked = tf.squeeze(these_labels_masked, -1)
+            labels[l] = these_labels_masked
+
+        # Set up model inputs
+        features = [
+            tf.nn.embedding_lookup(self.embeddings[input_name], features[input_name])
+            for input_name in self.model_config['inputs']  # word type and/or predicate
+        ]
+        features = tf.concat(features, axis=2)
+
+        return features, mask, labels, tokens
+
+    def outputs_to_predictions(self, outputs):
+        return [
+            outputs[task]['predictions'] for task in self.task_list
+        ]
+
+    def call(self, batch):
+        """
+        data:
             features: [BATCH_SIZE, SEQ_LEN, HID]
             mask: [BATCH_SIZE, SEQ_LEN]
             labels: Dict{task : [BATCH_SIZE, SEQ_LEN]} (for srl: [..., 9])
             tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
         :return: predictions
         """
-        features = data[0]
-        mask = data[1]
-        labels = data[2:2+len(self.label_idx_map)]
-        tokens = data[2+len(self.label_idx_map):]
-        labels = util.list2dict(labels, self.label_idx_map)
-        tokens = util.list2dict(tokens, self.feature_idx_map)
+        features, mask, labels, tokens = self.preprocess_batch(batch)
 
         outputs = {
             'mask': mask,  # loss needs it
@@ -140,15 +227,7 @@ class LISAModel(keras.models.Model):
             predictions = self.outputs_to_predictions(outputs)
             return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
 
-    def outputs_to_predictions(self, outputs):
-        return [
-            outputs[task]['predictions'] for task in self.task_list
-        ]
-
-    def get_preprocessor_instance(self):
-        return LISAModelPreprocess(
-            self.feature_idx_map, self.label_idx_map, self.model_config, self.task_list, self.vocab)
-
+    # LOSS PART
     def model_loss(self, labels, predictions):
         loss = []
 
@@ -163,6 +242,7 @@ class LISAModel(keras.models.Model):
 
         return loss
 
+    # EVALUATION PART
     def eval_metrics(self, labels, outputs):
         scores = {}
         for metric in self.custom_metrics:

@@ -7,8 +7,8 @@ import os
 import train_utils
 from vocab import Vocab
 from model import LISAModel
-from loss import LISAModelLoss, DummyLoss, SumLoss
-from evaluation_fns import EvalMetricsCallBack
+from loss import DummyLoss, SumLoss
+from metrics import EvalMetricsCallBack, print_model_metrics
 
 import numpy as np
 import util
@@ -98,11 +98,11 @@ def main():
     # Initialize the model
     model = LISAModel(hparams, model_config, layer_task_config, layer_attention_config, feature_idx_map, label_idx_map,
                       vocab)
-
-    if args.debug:
-      logging.log(logging.INFO, "Created trainable variables: %s" % str([v.name for v in tf.trainable_variables()]))
-
-    preprocessor = model.get_preprocessor_instance()
+    #
+    # if args.debug:
+    #   logging.log(logging.INFO, "Created trainable variables: %s" % str([v.name for v in tf.trainable_variables()]))
+    #
+    import preprocess_batch
     optimizer = optim.Adam(
         # learning_rate=1e-5,
         # beta_1=hparams.beta1,
@@ -119,16 +119,24 @@ def main():
         optimizer=optimizer,
         loss=losses,
     )
-    batch_generator = train_utils.train_batch_generator(preprocessor,
+
+    batch_generator = train_utils.train_batch_generator(len(model.task_list),
                                           vocab, data_config, dev_filenames, num_epochs=1,
                                           shuffle=False,
                                           embedding_files=embedding_files,
-                                          batch_size=4)  # hparams.batch_size
+                                          batch_size=64)  # hparams.batch_size
     val_data = next(batch_generator)
     # print(len(val_data[0][0]))
     # for i in range(10):
     #     val_data = next(batch_generator)
         # print(len(val_data[0][0]))
+
+    model.fit(
+        batch_generator,
+        epochs=1,
+        steps_per_epoch=1,
+    )
+    model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
     eval_callback = EvalMetricsCallBack(validation_data=val_data)
@@ -136,13 +144,19 @@ def main():
     # preds = model(val_data[0])
     # loss = losses[-1](val_data[1], preds[-1])
 
-
     model.fit(
         batch_generator,
-        epochs=200,
-        steps_per_epoch=2,
+        epochs=100,
+        steps_per_epoch=100,
         callbacks=[eval_callback],
     )
+
+    # for l in model.transformer_layers:
+    #     w = l.get_weights()
+    #     print(len(w))
+
+    # model.save("model/m1")
+    # print_model_metrics(model, val_data[0])
 
 
 if __name__ == "__main__":
