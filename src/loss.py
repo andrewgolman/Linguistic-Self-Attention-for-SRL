@@ -28,10 +28,16 @@ class LISAModelLoss:
 
 
 class DummyLoss:
+    def __init__(self):
+        self.__name__ = "DummyLoss"
+
     def __call__(self, labels, predictions, sample_weight=None):
         return 0.
 
 
 class SumLoss:
+    def __init__(self):
+        self.__name__ = "SumLoss"
+
     def __call__(self, labels, predictions, sample_weight=None):
         return tf.reduce_sum(predictions)

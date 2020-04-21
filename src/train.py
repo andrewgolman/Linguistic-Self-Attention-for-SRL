@@ -118,7 +118,7 @@ def main():
     train_batch_generator = train_utils.batch_generator(task_list_size,
                                                         lookup_ops, data_config, dev_filenames, num_epochs=10,
                                                         shuffle=True,
-                                                        batch_size=64)  # hparams.batch_size
+                                                        batch_size=2)  # hparams.batch_size
     val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=2, num_epochs=1, shuffle=False)
 
     model.fit(
@@ -138,8 +138,7 @@ def main():
         callbacks=[eval_callback, lr_schedule_callback],
     )
 
-    # model.save("model/m1")
-    # print_model_metrics(model, val_data[0])
+    model.save_weights("model/m2", save_format='tf')
 
 
 if __name__ == "__main__":
