@@ -1,0 +1,5 @@
+tensorflow==2.1.0
+attrdict
+numpy
+opennmt-tf
+tensorflow-addons

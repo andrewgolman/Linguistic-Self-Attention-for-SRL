@@ -139,3 +139,7 @@ def list2dict(l, keys):
     # assert len(l) == len(keys), (len(l), keys)
     keys = sorted(keys)
     return {keys[i]: l[i] for i in range(len(keys))}
+
+
+def task_list(task_config):
+    return sum([list(v.keys()) for v in task_config.values()], [])

@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow.keras.optimizers as optim
+import tensorflow_addons as tfa
 
 import argparse
 import os
@@ -9,6 +10,7 @@ from vocab import Vocab
 from model import LISAModel
 from loss import DummyLoss, SumLoss
 from metrics import EvalMetricsCallBack, print_model_metrics
+import dataset
 
 import numpy as np
 import util
@@ -51,12 +53,6 @@ arg_parser.set_defaults(debug=False, num_gpus=1, keep_k_best_models=1)
 args, leftovers = arg_parser.parse_known_args()
 
 
-def dev_batch_generator(preprocessor):
-    # return train_utils.get_input_fn(vocab, data_config, dev_filenames, hparams.batch_size, num_epochs=1, shuffle=False,
-    #                                 embedding_files=embedding_files)
-    pass
-
-
 def main():
     util.init_logging(logging.INFO)
 
@@ -95,65 +91,52 @@ def main():
     # Generate mappings from feature/label names to indices in the model_fn inputs
     feature_idx_map, label_idx_map = util.load_feat_label_idx_maps(data_config)
 
-    # Initialize the model
-    model = LISAModel(hparams, model_config, layer_task_config, layer_attention_config, feature_idx_map, label_idx_map,
-                      vocab)
-    #
-    # if args.debug:
-    #   logging.log(logging.INFO, "Created trainable variables: %s" % str([v.name for v in tf.trainable_variables()]))
-    #
-    import preprocess_batch
-    optimizer = optim.Adam(
-        # learning_rate=1e-5,
-        # beta_1=hparams.beta1,
-        # beta_2=hparams.beta2,
-        # epsilon=hparams.epsilon,
+    # todo AG check, mb use adam
+    optimizer = optim.Nadam(
+        learning_rate=hparams.learning_rate,
+        beta_1=hparams.beta1,
+        beta_2=hparams.beta2,
+        epsilon=hparams.epsilon,
         clipnorm=hparams.gradient_clip_norm,
     )
+    # todo AG check
+    optimizer = tfa.optimizers.MovingAverage(optimizer, average_decay=hparams.moving_average_decay)
+    task_list_size = len(util.task_list(layer_task_config))
+    losses = [DummyLoss()] * task_list_size + [SumLoss()]
 
-    # loss_instance = LISAModelLoss(model.output_layers, model.task_config, model.label_idx_map.keys())
-
-    output_len = len(model.task_list) + 1
-    losses = [DummyLoss()] * (output_len - 1) + [SumLoss()]
+    # Initialize the model
+    # mirrored_strategy = tf.distribute.MirroredStrategy()
+    # with mirrored_strategy.scope():
+    model = LISAModel(hparams, model_config, layer_task_config, layer_attention_config, feature_idx_map,
+                      label_idx_map, vocab)
     model.compile(
         optimizer=optimizer,
         loss=losses,
     )
 
-    batch_generator = train_utils.train_batch_generator(len(model.task_list),
-                                          vocab, data_config, dev_filenames, num_epochs=1,
-                                          shuffle=False,
-                                          embedding_files=embedding_files,
-                                          batch_size=64)  # hparams.batch_size
-    val_data = next(batch_generator)
-    # print(len(val_data[0][0]))
-    # for i in range(10):
-    #     val_data = next(batch_generator)
-        # print(len(val_data[0][0]))
+    lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
+    train_batch_generator = train_utils.batch_generator(task_list_size,
+                                                        lookup_ops, data_config, dev_filenames, num_epochs=10,
+                                                        shuffle=True,
+                                                        batch_size=64)  # hparams.batch_size
+    val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=2, num_epochs=1, shuffle=False)
 
     model.fit(
-        batch_generator,
+        train_batch_generator,
         epochs=1,
         steps_per_epoch=1,
     )
     model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
-    eval_callback = EvalMetricsCallBack(validation_data=val_data)
-
-    # preds = model(val_data[0])
-    # loss = losses[-1](val_data[1], preds[-1])
+    eval_callback = EvalMetricsCallBack(val_dataset)
 
     model.fit(
-        batch_generator,
+        train_batch_generator,
         epochs=100,
-        steps_per_epoch=100,
-        callbacks=[eval_callback],
+        steps_per_epoch=10,
+        callbacks=[eval_callback, lr_schedule_callback],
     )
-
-    # for l in model.transformer_layers:
-    #     w = l.get_weights()
-    #     print(len(w))
 
     # model.save("model/m1")
     # print_model_metrics(model, val_data[0])

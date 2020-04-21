@@ -31,16 +31,7 @@ def map_strings_to_ints(vocab_lookup_ops, data_config, feature_label_names):
   return _mapper
 
 
-def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_epochs, shuffle,
-                shuffle_buffer_multiplier):
-
-  bucket_boundaries = constants.DEFAULT_BUCKET_BOUNDARIES
-  bucket_batch_sizes = [batch_size] * (len(bucket_boundaries) + 1)
-
-  # todo do something smarter with multiple files + parallel?
-
-  with tf.device('/cpu:0'):
-
+def create_dataset(data_filenames, data_config, vocab_lookup_ops):
     # get the names of data fields in data_config that correspond to features or labels,
     # and thus that we want to load into batches
     feature_label_names = [d for d in data_config.keys() if \
@@ -53,6 +44,19 @@ def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_e
 
     # intmap the dataset
     dataset = dataset.map(map_strings_to_ints(vocab_lookup_ops, data_config, feature_label_names), num_parallel_calls=8)
+    return dataset
+
+
+def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_epochs, shuffle,
+                shuffle_buffer_multiplier=None):
+
+  bucket_boundaries = constants.DEFAULT_BUCKET_BOUNDARIES
+  bucket_batch_sizes = [batch_size] * (len(bucket_boundaries) + 1)
+
+  # todo do something smarter with multiple files + parallel?
+
+  with tf.device('/cpu:0'):
+    dataset = create_dataset(data_filenames, data_config, vocab_lookup_ops)
     # dataset = dataset.cache()  # todo AG
 
     # do batching

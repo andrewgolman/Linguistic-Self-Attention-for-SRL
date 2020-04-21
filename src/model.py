@@ -34,7 +34,7 @@ class LISAModel(keras.models.Model):
         self.layer_config = self.model_config['layers']
 
         self.items_to_log = {}
-        self.task_list = sum([list(v.keys()) for v in task_config.values()], [])
+        self.task_list = util.task_list(task_config)
 
         self.num_layers = max(self.task_config.keys()) + 1
 
@@ -221,11 +221,10 @@ class LISAModel(keras.models.Model):
         losses = self.model_loss(labels, outputs)
 
         if self.custom_eval:
-            metrics = self.eval_metrics(labels, outputs)
-            return outputs, metrics, losses
-        else:
-            predictions = self.outputs_to_predictions(outputs)
-            return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
+            self.update_metrics(labels, outputs)
+
+        predictions = self.outputs_to_predictions(outputs)
+        return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
 
     # LOSS PART
     def model_loss(self, labels, predictions):
@@ -243,33 +242,20 @@ class LISAModel(keras.models.Model):
         return loss
 
     # EVALUATION PART
-    def eval_metrics(self, labels, outputs):
+    def update_metrics(self, labels, outputs):
+        for metric in self.custom_metrics:
+            metric.update(labels, outputs)
+
+    def get_metrics(self):
         scores = {}
         for metric in self.custom_metrics:
-            scores[(metric.task, metric.name)] = metric(labels, outputs)
+            scores[(metric.task, metric.name)] = metric.result()
         return scores
 
     def start_custom_eval(self):
         self.custom_eval = True
+        for metric in self.custom_metrics:
+            metric.reset_states()
 
     def end_custom_eval(self):
         self.custom_eval = False
-
-
-
-# def train_step(self):
-#     if self.hparams.moving_average_decay > 0.:
-#         moving_averager = tf.train.ExponentialMovingAverage(self.hparams.moving_average_decay, zero_debias=True,
-#                                                           num_updates=tf.train.get_global_step())
-#         moving_average_op = moving_averager.apply(train_utils.get_vars_for_moving_average(self.hparams.average_norms))
-#         # use moving averages of variables if evaluating
-#         assign_moving_averages_dep = tf.cond(tf.equal(self.mode, ModeKeys.TRAIN),
-#                                            lambda: tf.no_op(),
-#                                            lambda: nn_utils.set_vars_to_moving_average(moving_averager))
-#         # todo AG adjust logging
-#         # items_to_log['loss'] = loss
-#         # logging_hook = tf.train.LoggingTensorHook(self.items_to_log, every_n_iter=20)
-#
-#         export_outputs = {tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-#                           tf.estimator.export.PredictOutput(flat_predictions)}
-

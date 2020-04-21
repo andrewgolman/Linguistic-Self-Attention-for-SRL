@@ -30,7 +30,18 @@ class BaseMetric:
             else:
                 self.static_params[param_name] = param_values['value']
 
-    def __call__(self, labels, predictions):
+        self.history = []
+
+    def reset_states(self):
+        self.history = []
+
+    def update_state(self, values):
+        self.history.append(values)
+
+    def result(self):
+        raise NotImplementedError
+
+    def update(self, labels, predictions):
         task_outputs = predictions[self.task]['predictions']
         task_labels = labels[self.task]
         tokens = predictions['tokens']
@@ -54,6 +65,12 @@ class BaseMetric:
 class Accuracy(BaseMetric):
     name = "Accuracy"
 
+    def __init__(self, *args, **kwargs):
+        super(Accuracy, self).__init__(*args, **kwargs)
+
+    def reset_states(self):
+        self.accuracy = tf.keras.metrics.Accuracy()
+
     def make_call(self, labels, outputs, mask, **kwargs):
         """
         :param labels: [BATCH_SIZE, SEQ_LEN]
@@ -61,9 +78,11 @@ class Accuracy(BaseMetric):
         :param mask: [BATCH_SIZE, SEQ_LEN]
         :return: todo AG ops or number?
         """
-        instance = tf.keras.metrics.Accuracy()
-        instance.update_state(labels, outputs, sample_weight=mask)
-        return instance.result().numpy()
+
+        self.accuracy.update_state(labels, outputs, sample_weight=mask)
+
+    def result(self):
+        return self.accuracy.result().numpy()
 
 
 class ConllSrlEval(BaseMetric):
@@ -96,11 +115,18 @@ class ConllSrlEval(BaseMetric):
         out_types = [tf.int64, tf.int64, tf.int64]
         correct, excess, missed = evaluation_fns_np.conll_srl_eval(*[
             x.numpy() if isinstance(x, tf.Tensor) else x for x in py_eval_inputs])
-        # correct, excess, missed = tf.py_function(evaluation_fns_np.conll_srl_eval, py_eval_inputs, out_types)
 
         correct_count += correct
         excess_count += excess
         missed_count += missed
+
+        self.update_state([correct_count, excess_count, missed_count])
+
+    def result(self):
+        data = np.array(self.history)
+        correct_count = data[:, 0].sum()
+        excess_count = data[:, 1].sum()
+        missed_count = data[:, 2].sum()
 
         precision = correct_count / (correct_count + excess_count + EPS)
         recall = correct_count / (correct_count + missed_count + EPS)
@@ -130,15 +156,14 @@ class ConllParseEval(BaseMetric):
         # pyfunc is necessary here since we need to write to disk
         py_eval_inputs = [str_predictions, parse_head_predictions, str_words, mask, str_targets, parse_head_targets,
                           pred_parse_eval_file, gold_parse_eval_file, str_pos_targets]
-        out_types = [tf.int64, tf.int64]
         total, corrects = evaluation_fns_np.conll_parse_eval(*py_eval_inputs)
-        # total, corrects = tf.py_func(evaluation_fns_np.conll_parse_eval, py_eval_inputs, out_types, stateful=False)
+        self.update_state([total, corrects])
 
-        total_count += total
-        correct_count += corrects
-        accuracies = correct_count / total_count
-
-        return accuracies
+    def result(self):
+        data = np.array(self.history)
+        total_count = data[:, 0].sum()
+        correct_count = data[:, 1].sum()
+        return correct_count / total_count
 
 
 dispatcher = {
@@ -171,12 +196,12 @@ class CallMetricsCallback(tf.keras.callbacks.Callback):
             print(k, ":", v)
 
 
-def print_model_metrics(model, X_val):
-    outputs, metrics, losses = model(X_val)
-
-    print("Validation losses:")
-    for i, v in enumerate(losses):
-        print(i, ":", v)
+def print_model_metrics(model):
+    # losses = model.get_losses()
+    metrics = model.get_metrics()
+    # print("Validation losses:")
+    # for i, v in enumerate(losses):
+    #     print(i, ":", v)
     print("Validation metrics:")
     for k, v in metrics.items():
         print(k, ":", v)
@@ -186,13 +211,16 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     """
     todo docs
     """
-    def __init__(self, validation_data):
+    def __init__(self, dataset):
         super(EvalMetricsCallBack, self).__init__()
-        self.X_val, _ = validation_data  # labels are currently meaningless
+        self.ds = dataset
 
     def on_epoch_end(self, epoch, logs={}):
         self.model.start_custom_eval()
+        for batch in self.ds.as_numpy_iterator():
+            self.model(batch)
+
         print("=" * 20)
         print("EPOCH:", epoch + 1)
-        print_model_metrics(self.model, self.X_val)
+        print_model_metrics(self.model)
         self.model.end_custom_eval()

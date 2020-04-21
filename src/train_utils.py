@@ -7,7 +7,6 @@ import constants
 from pathlib import Path
 import tensorflow.compat.v1.logging as logging
 from attrdict import AttrDict
-from itertools import islice
 
 
 def load_hparams(args, model_config):
@@ -30,22 +29,18 @@ def load_hparams(args, model_config):
     return hparams
 
 
-def train_batch_generator(task_count, vocab, data_config, data_files, batch_size, num_epochs, shuffle,
-                 shuffle_buffer_multiplier=1, embedding_files=None):
-    # this needs to be created from here (lazily) so that it ends up in the same tf.Graph as everything else
-    vocab_lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
-    ds = dataset.get_dataset(data_files, data_config, vocab_lookup_ops, batch_size, num_epochs, shuffle,
+def batch_generator(task_count, lookup_ops, data_config, data_files, batch_size, num_epochs, shuffle,
+                    shuffle_buffer_multiplier=1, repeat=True):
+    # todo AG check graph for lookup ops
+    # vocab ops needs to be created from here (lazily) so that it ends up in the same tf.Graph as everything else
+    ds = dataset.get_dataset(data_files, data_config, lookup_ops, batch_size, num_epochs, shuffle,
                              shuffle_buffer_multiplier)
-    # todo shuffle every time
-    while True:
-        # padded_dataset = ds.padded_batch(
-        #     batch_size,
-        #     padded_shapes=[2, None, None],
-        #     padding_values=constants.PAD_VALUE,
-        #     drop_remainder=True,
-        # )
-        for batch in ds.as_numpy_iterator():
-            yield batch, [0] * (task_count + 1)
+    for batch in ds.as_numpy_iterator():
+        yield batch, [0] * (task_count + 1)
+    if repeat:
+        while True:
+            for batch in ds.as_numpy_iterator():
+                yield batch, [0] * (task_count + 1)
 
 
 def load_json_configs(config_file_list, args=None):
@@ -150,9 +145,3 @@ def best_model_compare_fn(best_eval_result, current_eval_result, key):
     raise ValueError('best_eval_result cannot be empty or key "%s" is not found.' % key)
 
   return best_eval_result[key] < current_eval_result[key]
-
-
-def serving_input_receiver_fn():
-  inputs = tf.placeholder(tf.int32, [None, None, None])
-  return tf.estimator.export.TensorServingInputReceiver(inputs, inputs)
-
