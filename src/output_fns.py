@@ -33,7 +33,7 @@ class SoftmaxClassifier(OutputLayer):
         self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
         self.dense = L.Dense(task_vocab_size, activation=L.LeakyReLU(alpha=0.1))
 
-        self.loss = tf.keras.losses.SparseCategoricalCrossentropy(
+        self.loss = tf.keras.losses.CategoricalCrossentropy(
             from_logits=True,
             label_smoothing=self.hparams.label_smoothing,
             reduction=tf.keras.losses.Reduction.SUM,
@@ -63,14 +63,12 @@ class SoftmaxClassifier(OutputLayer):
     def loss(self, targets, output, mask):
         logits = output['scores']
         n_labels = self.static_params['task_vocab_size']
-        # targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
+        targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
         return self.loss(
             y_pred=tf.reshape(logits, [-1, n_labels]),
-            y_true=tf.reshape(targets, [-1]),
+            y_true=tf.reshape(targets_onehot, [-1, n_labels]),
             sample_weight=tf.reshape(mask, [-1])
         )
-
-        # return losses.sparse_categorical_cross_entropy(y_true, y_pred)
 
 
 class JointSoftmaxClassifier(OutputLayer):
@@ -279,7 +277,7 @@ class SRLBilinear(OutputLayer):
         batch_seq_len = input_shape[1]
 
         # indices of predicates
-        predicate_preds = predicate_preds_train if not self.in_eval_mode else predicate_preds_eval
+        predicate_preds = predicate_preds_train # ! if not self.in_eval_mode else predicate_preds_eval
         # [PRED_COUNT, 2] (batch_row, sentence_pos for each predicate)
         predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
 
@@ -317,10 +315,10 @@ class SRLBilinear(OutputLayer):
         seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [BATCH_SIZE]
 
         transition_params = self.static_params["transition_params"]
-        if transition_params is not None and self.in_eval_mode:
-            num_predicates = shape_list(srl_logits_transposed)[0]
-            if num_predicates != 0:
-                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+        # if transition_params is not None and self.in_eval_mode:
+        #     num_predicates = shape_list(srl_logits_transposed)[0]
+        #     if tf.not_equal(num_predicates, 0):
+        #         predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
 
         # todo AG clear the mess
         output = {
@@ -389,7 +387,7 @@ class SRLBilinear(OutputLayer):
             loss = tf.reduce_mean(-log_likelihood)
         else:
             num_predicates = shape_list(srl_logits_transposed)[0]
-            if num_predicates == 0:
+            if tf.equal(num_predicates, 0):
                 return 1e5
             srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
             return self.eval_loss(
@@ -397,14 +395,6 @@ class SRLBilinear(OutputLayer):
                 y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
                 sample_weight=tf.reshape(gather_mask, [-1])
             )
-
-            # loss = tf.compat.v1.losses.softmax_cross_entropy(
-            #     logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
-            #     onehot_labels=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-            #     weights=tf.reshape(gather_mask, [-1]),
-            #     label_smoothing=self.hparams.label_smoothing,
-            #     reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
-            # )
 
         return loss
 

@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.keras as keras
 import tensorflow.keras.layers as L
 import tensorflow.compat.v1.logging as logging
 import metrics
@@ -8,6 +7,8 @@ import util
 import transformer_layer
 import constants
 from opennmt.layers.position import SinusoidalPositionEncoder
+import numpy as np
+
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
 
 
@@ -18,7 +19,7 @@ from opennmt.layers.position import SinusoidalPositionEncoder
 #         self.data = data
 
 
-class LISAModel(keras.models.Model):
+class LISAModel(tf.keras.models.Model):
     # INITIALIZATION PART
     def __init__(self, hparams, model_config, task_config, attention_config,
                  feature_idx_map, label_idx_map, vocab):
@@ -46,6 +47,7 @@ class LISAModel(keras.models.Model):
         self.init_metrics()
         self.embeddings = self.get_embeddings()
         self.custom_eval = False
+        self.eval_loss_history = []
 
         logging.log(logging.INFO,
                     "Created model with {} trainable parameters".format(util.count_model_params(self)))
@@ -79,7 +81,7 @@ class LISAModel(keras.models.Model):
                 )
 
     def init_metrics(self):
-        self.custom_metrics = []
+        self.custom_metrics = [metrics.ValLoss()]
         for layer_id in self.task_config:
             for task, params in self.task_config[layer_id].items():
                 for eval_name, eval_map in params['eval_fns'].items():
@@ -221,10 +223,13 @@ class LISAModel(keras.models.Model):
         losses = self.model_loss(labels, outputs)
 
         if self.custom_eval:
-            self.update_metrics(labels, outputs)
+            self.update_metrics(labels, outputs, losses)
 
         predictions = self.outputs_to_predictions(outputs)
-        return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
+        if self.custom_eval:
+            return [*predictions, tf.zeros_like(mask)]  # keras wants output_shape[0]==batch_size for all outputs
+        else:
+            return [*predictions, tf.convert_to_tensor(losses, dtype=tf.float32)]
 
     # LOSS PART
     def model_loss(self, labels, predictions):
@@ -242,8 +247,9 @@ class LISAModel(keras.models.Model):
         return loss
 
     # EVALUATION PART
-    def update_metrics(self, labels, outputs):
-        for metric in self.custom_metrics:
+    def update_metrics(self, labels, outputs, losses):
+        self.custom_metrics[0].update(None, losses)
+        for metric in self.custom_metrics[1:]:
             metric.update(labels, outputs)
 
     def get_metrics(self):
@@ -254,6 +260,7 @@ class LISAModel(keras.models.Model):
 
     def start_custom_eval(self):
         self.custom_eval = True
+        self.eval_loss_history = []
         for f in self.output_layers.values():
             f.in_eval_mode = True
         for metric in self.custom_metrics:

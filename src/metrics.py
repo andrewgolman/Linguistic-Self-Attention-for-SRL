@@ -112,7 +112,8 @@ class ConllSrlEval(BaseMetric):
         # pyfunc is necessary here since we need to write to disk
         py_eval_inputs = [str_predictions, predicate_predictions, str_words, mask, str_targets, predicate_targets,
                           pred_srl_eval_file, gold_srl_eval_file, str_pos_predictions, str_pos_targets]
-        out_types = [tf.int64, tf.int64, tf.int64]
+        # out_types = [tf.int64, tf.int64, tf.int64]
+        # correct, excess, missed = tf.py_function(evaluation_fns_np.conll_srl_eval, py_eval_inputs, out_types)
         correct, excess, missed = evaluation_fns_np.conll_srl_eval(*[
             x.numpy() if isinstance(x, tf.Tensor) else x for x in py_eval_inputs])
 
@@ -156,7 +157,11 @@ class ConllParseEval(BaseMetric):
         # pyfunc is necessary here since we need to write to disk
         py_eval_inputs = [str_predictions, parse_head_predictions, str_words, mask, str_targets, parse_head_targets,
                           pred_parse_eval_file, gold_parse_eval_file, str_pos_targets]
-        total, corrects = evaluation_fns_np.conll_parse_eval(*py_eval_inputs)
+
+        # out_types = [tf.int64, tf.int64]
+        # total, corrects = tf.py_function(evaluation_fns_np.conll_parse_eval, py_eval_inputs, out_types)
+        total, corrects = evaluation_fns_np.conll_parse_eval(*[
+            x.numpy() if isinstance(x, tf.Tensor) else x for x in py_eval_inputs])
         self.update_state([total, corrects])
 
     def result(self):
@@ -166,10 +171,25 @@ class ConllParseEval(BaseMetric):
         return correct_count / total_count
 
 
+class ValLoss(BaseMetric):
+    name = "ValLosses"
+
+    def __init__(self):
+        super(ValLoss, self).__init__(None, {})
+
+    def update(self, labels, outputs, **kwargs):
+        self.update_state(outputs)
+
+    def result(self):
+        # this might fail when run in the graph
+        # not fixing it yet because eval_fns_np needs rewriting and srl_output has a bug for graphs
+        return tf.reduce_mean(self.history, 0).numpy()
+
+
 dispatcher = {
-  'accuracy': Accuracy,
-  'conll_srl_eval': ConllSrlEval,
-  'conll_parse_eval': ConllParseEval,
+    'accuracy': Accuracy,
+    'conll_srl_eval': ConllSrlEval,
+    'conll_parse_eval': ConllParseEval,
 }
 
 
@@ -197,14 +217,13 @@ class CallMetricsCallback(tf.keras.callbacks.Callback):
 
 
 def print_model_metrics(model):
-    # losses = model.get_losses()
     metrics = model.get_metrics()
-    # print("Validation losses:")
-    # for i, v in enumerate(losses):
-    #     print(i, ":", v)
+    print("Validation losses")
+    print(metrics[(None, 'ValLosses')])
     print("Validation metrics:")
     for k, v in metrics.items():
-        print(k, ":", v)
+        if k[0]:
+            print(k, ":", v)
 
 
 class EvalMetricsCallBack(tf.keras.callbacks.Callback):
