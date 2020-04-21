@@ -210,7 +210,7 @@ class LISAModel(keras.models.Model):
             # a whole stack of unnormalized layer outputs.
             predict_features = self.layer_norm(features)
 
-            for task, layer in self.output_layers.items():  # copies
+            for task, layer in self.output_layers.items():
                 if layer.transformer_layer_id == i:
                     outputs[task] = self.output_layers[task](
                         [predict_features, mask],
@@ -254,8 +254,12 @@ class LISAModel(keras.models.Model):
 
     def start_custom_eval(self):
         self.custom_eval = True
+        for f in self.output_layers.values():
+            f.in_eval_mode = True
         for metric in self.custom_metrics:
             metric.reset_states()
 
     def end_custom_eval(self):
+        for f in self.output_layers.values():
+            f.in_eval_mode = False
         self.custom_eval = False

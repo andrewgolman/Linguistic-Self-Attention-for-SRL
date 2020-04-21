@@ -251,13 +251,19 @@ class SRLBilinear(OutputLayer):
             1 - self.hparams.bilinear_dropout
         )
 
+        self.eval_loss = tf.keras.losses.CategoricalCrossentropy(
+            from_logits=True,
+            label_smoothing=self.hparams.label_smoothing,
+            reduction=tf.keras.losses.Reduction.SUM,
+        )
+
     @staticmethod
     def bool_mask_where_predicates(predicates_tensor, mask):
         # TODO this should really be passed in, not assumed...
         predicate_outside_idx = 0
         return tf.logical_and(tf.not_equal(predicates_tensor, predicate_outside_idx), tf.cast(mask, tf.bool))
 
-    def make_call(self, data, predicate_preds_train, predicate_preds_eval, predicate_targets):
+    def make_call(self, data, predicate_preds_train, predicate_preds_eval, predicate_targets, **kwargs):
         '''
 
         :param features: [BATCH_SIZE, SEQ_LEN, hidden_size]
@@ -305,13 +311,16 @@ class SRLBilinear(OutputLayer):
         # num_predicates_in_batch x seq_len
         predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN] (role for each word for each predicate)
 
-        # todo AG check
-        # seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)
-        seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)  # [BATCH_SIZE]
+        # need to repeat each of these once for each target in the sentence
+        mask_tiled = tf.reshape(tf.tile(mask, [1, batch_seq_len]), [batch_size, batch_seq_len, batch_seq_len])
+        gather_mask = tf.gather_nd(mask_tiled, predicate_gather_indices)
+        seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [BATCH_SIZE]
 
         transition_params = self.static_params["transition_params"]
         if transition_params is not None and self.in_eval_mode:
-            predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+            num_predicates = shape_list(srl_logits_transposed)[0]
+            if num_predicates != 0:
+                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
 
         # todo AG clear the mess
         output = {
@@ -320,9 +329,8 @@ class SRLBilinear(OutputLayer):
             # 'targets': srl_targets_gold_predicates,
             'probabilities': tf.nn.softmax(srl_logits_transposed, -1),  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
             'predicate_preds': predicate_preds,
-            'batch_seq_len': batch_seq_len,
-            'batch_size': batch_size,
             'predicate_targets': predicate_targets,
+            'gather_mask': gather_mask,
         }
 
         return output
@@ -333,28 +341,22 @@ class SRLBilinear(OutputLayer):
             'scores',
             'probabilities',
             'predicate_preds',
-            'batch_seq_len',
-            'batch_size',
             'predicate_targets',
+            'gather_mask',
         ]
 
     def loss(self, targets, output, mask):
-        srl_logits_transposed = output['scores']
         num_labels = self.static_params['task_vocab_size']
-        predicate_preds = output['predicate_preds']
-        batch_seq_len = output['batch_seq_len']
-        batch_size = output['batch_size']
-        predicate_targets = output['predicate_targets']
-        seq_lens = tf.cast(tf.reduce_sum(mask, 1), tf.int32)
         transition_params = self.static_params['transition_params']
 
-        predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
+        srl_logits_transposed = output['scores']
+        predicate_preds = output['predicate_preds']
+        gather_mask = output['gather_mask']
+        predicate_targets = output['predicate_targets']
 
-        # (3) compute loss
-        # need to repeat each of these once for each target in the sentence
-        mask_tiled = tf.reshape(tf.tile(mask, [1, batch_seq_len]), [batch_size, batch_seq_len, batch_seq_len])
-        gather_mask = tf.gather_nd(mask_tiled, predicate_gather_indices)
+        seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)
 
+        # predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
         # now we have k sets of targets for the k frames
         # (p1) f1 f2 f3
         # (p2) f1 f2 f3
@@ -370,14 +372,14 @@ class SRLBilinear(OutputLayer):
         srl_targets_indices = tf.where(tf.sequence_mask(tf.reshape(gold_predicate_counts, [-1])))
 
         # num_predicates_in_batch x seq_len
-        srl_targets_gold_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_indices)
+        # srl_targets_gold_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_indices)
 
         predicted_predicate_counts = tf.reduce_sum(tf.cast(
             self.bool_mask_where_predicates(predicate_preds, mask), tf.int32), -1)
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(predicted_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_pred_indices)
 
-        if transition_params is not None and not self.in_eval_mode:  # todo AG update transition params?
+        if transition_params is not None and not self.in_eval_mode:  # todo AG update transition params
             log_likelihood, transition_params = crf_log_likelihood(
                 srl_logits_transposed,
                 srl_targets_predicted_predicates,
@@ -386,15 +388,23 @@ class SRLBilinear(OutputLayer):
             )
             loss = tf.reduce_mean(-log_likelihood)
         else:
-            assert False
+            num_predicates = shape_list(srl_logits_transposed)[0]
+            if num_predicates == 0:
+                return 1e5
             srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
-            loss = tf.compat.v1.losses.softmax_cross_entropy(
-                logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
-                onehot_labels=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-                weights=tf.reshape(gather_mask, [-1]),
-                label_smoothing=self.hparams.label_smoothing,
-                reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+            return self.eval_loss(
+                y_pred=tf.reshape(srl_logits_transposed, [-1, num_labels]),
+                y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
+                sample_weight=tf.reshape(gather_mask, [-1])
             )
+
+            # loss = tf.compat.v1.losses.softmax_cross_entropy(
+            #     logits=tf.reshape(srl_logits_transposed, [-1, num_labels]),
+            #     onehot_labels=tf.reshape(srl_targets_onehot, [-1, num_labels]),
+            #     weights=tf.reshape(gather_mask, [-1]),
+            #     label_smoothing=self.hparams.label_smoothing,
+            #     reduction=tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+            # )
 
         return loss
 

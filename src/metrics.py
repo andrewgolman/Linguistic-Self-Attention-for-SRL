@@ -219,6 +219,7 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
         self.model.start_custom_eval()
         for batch in self.ds.as_numpy_iterator():
             self.model(batch)
+            # self.model.predict(batch)
 
         print("=" * 20)
         print("EPOCH:", epoch + 1)

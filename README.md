@@ -40,3 +40,9 @@ python src/train.py \
 --best_eval_key srl_f1 \
 --save_dir model 
 ```
+
+Current todos:
+- save model
+- apply value functions
+- test full configuration
+- apply masked dropout
