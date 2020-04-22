@@ -82,11 +82,11 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
         attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
         # Replace last heads with special heads. todo AG optimize
-        print("==== DEBUG ====")
-        print(tf.size(special_attn))
-        print(len(special_attn))
-        print(tf.equal(tf.size(special_attn), 0))
-        print(tf.equal(len(special_attn), 0))
+        # print("==== DEBUG ====")
+        # print(tf.size(special_attn))
+        # print(len(special_attn))
+        # print(tf.equal(tf.size(special_attn), 0))
+        # print(tf.equal(len(special_attn), 0))
         if len(special_attn) > 0:
             unstacked_attn = tf.unstack(attn, axis=1)  # [..., HEADS, SEQ_LEN, SEQ_LEN]
             for i, t in enumerate(special_attn):
@@ -94,14 +94,12 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
                 # tf.stop_gradient(unstacked_attn[-i])
             attn = tf.stack(unstacked_attn, axis=1)
 
-        # if tf.not_equal(tf.size(special_values), 0):
-        #     from opennmt.utils.misc import shape_list
-        #     print(shape_list(values))
-        #     unstacked_values = tf.unstack(values, axis=1)
-        #     for i, t in enumerate(special_values):
-        #         unstacked_values[-i] = t
-        #         # tf.stop_gradient(unstacked_attn[-i])
-        #     values = tf.stack(unstacked_values, axis=1)
+        if len(special_values) > 0:
+            unstacked_values = tf.unstack(values, axis=1)
+            for i, t in enumerate(special_values):
+                unstacked_values[-i] = t
+                # tf.stop_gradient(unstacked_attn[-i])
+            values = tf.stack(unstacked_values, axis=1)
 
         drop_attn = onmt_transformer.common.dropout(attn, self.dropout, training=training)
         heads = tf.matmul(drop_attn, values)
