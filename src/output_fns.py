@@ -12,7 +12,6 @@ class OutputLayer(FunctionDispatcher):
         self.transformer_layer_id = transformer_layer_id
         self.hparams = params['hparams']
         # if task_map.get('viterbi') or task_map.get('crf'):
-        # todo AG do not save everywhere
         if self.static_params['transition_params'] is not None:
             self.static_params['transition_params'] = tf.convert_to_tensor(
                 self.static_params['transition_params'], dtype=tf.float32)

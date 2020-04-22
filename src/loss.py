@@ -3,6 +3,11 @@ import tensorflow as tf
 
 
 class LISAModelLoss:
+    """
+    Applies output layers' loss functions to outputs
+    Doesn't work, as keras doesn't work with structured outputs
+    This computations are currently embedded into the model, and losses below just unwrap real losses
+    """
     def __init__(self, output_layers, task_config, task_list):
         self.items_to_log = {}
         self.output_layers = output_layers
@@ -28,6 +33,9 @@ class LISAModelLoss:
 
 
 class DummyLoss:
+    """
+    Ignores an output
+    """
     def __init__(self):
         self.__name__ = "DummyLoss"
 
@@ -36,6 +44,10 @@ class DummyLoss:
 
 
 class SumLoss:
+    """
+    Returns the sum of outputs
+    LISAModel returns a tensor of losses in the last output
+    """
     def __init__(self):
         self.__name__ = "SumLoss"
 

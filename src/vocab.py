@@ -56,11 +56,6 @@ class Vocab:
       for v in self.vocab_names_sizes.keys():
         if v in self.data_config:
           num_oov = 1 if 'oov' in self.data_config[v] and self.data_config[v]['oov'] else 0
-          # todo
-          # this_lookup = tf.contrib.lookup.index_table_from_file("%s/%s.txt" % (self.vocabs_dir, v),
-          #                                                       num_oov_buckets=num_oov,
-          #                                                       key_column_index=0)
-          # vocab_lookup_ops[v] = this_lookup
           vocab_lookup_ops[v] = tf.lookup.StaticVocabularyTable(
             tf.lookup.TextFileInitializer(
               "%s/%s.txt" % (self.vocabs_dir, v), tf.string, 0, tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER,
@@ -78,10 +73,6 @@ class Vocab:
             ),
             num_oov_buckets=1
           )
-          # tf.lookup.index_table_from_file(embedding_file,
-          #     num_oov_buckets=1,
-          #     key_column_index=0,
-          #     delimiter=' ')
           self.vocab_names_sizes[embeddings_name] = vocab_lookup_ops[embeddings_name].size()
 
     logging.log(logging.INFO, "Created %d vocab lookup ops: %s" %

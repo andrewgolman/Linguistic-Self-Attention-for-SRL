@@ -85,6 +85,9 @@ class Accuracy(BaseMetric):
 
 
 class ConllSrlEval(BaseMetric):
+    """
+    A proxy between the model and conll scripts for metric computation
+    """
     name = "ConllSrlEval"
 
     def make_call(self, labels, outputs, mask, words,
@@ -136,6 +139,9 @@ class ConllSrlEval(BaseMetric):
 
 
 class ConllParseEval(BaseMetric):
+    """
+    A proxy between the model and conll scripts for metric computation
+    """
     name = "ConllParseEval"
 
     def make_call(self, labels, outputs, mask, words,

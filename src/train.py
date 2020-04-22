@@ -73,7 +73,7 @@ def main():
     hparams = train_utils.load_hparams(args, model_config)
 
     # Set the random seed. This defaults to int(time.time()) if not otherwise set.
-    # todo check why results differ on similar runs
+    # todo AG check why results differ on similar runs
     np.random.seed(hparams.random_seed)
     tf.random.set_seed(hparams.random_seed)
 
@@ -92,7 +92,7 @@ def main():
     # Generate mappings from feature/label names to indices in the model_fn inputs
     feature_idx_map, label_idx_map = util.load_feat_label_idx_maps(data_config)
 
-    # todo AG check, mb use adam
+    # todo verify, mb use adam
     optimizer = optim.Nadam(
         learning_rate=hparams.learning_rate,
         beta_1=hparams.beta1,
@@ -100,7 +100,7 @@ def main():
         epsilon=hparams.epsilon,
         clipnorm=hparams.gradient_clip_norm,
     )
-    # todo AG check
+
     optimizer = tfa.optimizers.MovingAverage(optimizer, average_decay=hparams.moving_average_decay)
     task_list_size = len(util.task_list(layer_task_config))
     losses = [DummyLoss()] * task_list_size + [SumLoss()]

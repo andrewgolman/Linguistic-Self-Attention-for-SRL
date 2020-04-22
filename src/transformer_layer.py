@@ -177,10 +177,10 @@ class TransformerLayer(keras.layers.Layer):
             num_heads=self.layer_config['num_heads'],
             num_units=self.layer_config['head_dim'] * self.layer_config['num_heads'],
             ffn_inner_dim=self.layer_config['ff_hidden_size'],
-            dropout=1-self.hparams.prepost_dropout,  # todo AG check after add vs before add
+            dropout=1-self.hparams.prepost_dropout,
             attention_dropout=1-self.hparams.attn_dropout,
             ffn_dropout=1-self.hparams.ff_dropout,
-            ffn_activation=tf.nn.leaky_relu,  # todo AG do we need it to be leaky?
+            ffn_activation=tf.nn.leaky_relu,  # todo verify do we need it to be leaky?
         )
 
     def compute_special_attention(self, features, mask, outputs, labels):

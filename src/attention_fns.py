@@ -4,6 +4,11 @@ from base_fns import FunctionDispatcher
 
 
 class CopyFromOutput(FunctionDispatcher):
+    """
+    Copy a particular output from the given layer
+    - layer might be different in the eval mode
+    - (testing) with some kind of normalization applied
+    """
     def __init__(self, *args, **kwargs):
         super(CopyFromOutput, self).__init__(*args, **kwargs)
         self.layer_norm = tf.keras.layers.LayerNormalization()
@@ -22,7 +27,7 @@ class CopyFromOutput(FunctionDispatcher):
                 off_value=constants.VERY_SMALL
             )
 
-        return self.layer_norm(attention_to_copy)  # todo approve
+        return self.layer_norm(attention_to_copy)  # todo verify
 
 
 class LabelAttention(FunctionDispatcher):

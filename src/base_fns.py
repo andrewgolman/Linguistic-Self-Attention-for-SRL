@@ -60,6 +60,5 @@ class FunctionDispatcher(keras.layers.Layer):
         Function-layer call method
         :param data: [features(Tensor), mask(Tensor)]
         :param kwargs: function arguments. Might contain excessive arguments  # todo do not pass it
-        :return:
         """
         raise NotImplementedError
