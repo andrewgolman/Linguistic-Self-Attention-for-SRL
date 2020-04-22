@@ -42,7 +42,7 @@ python src/train.py \
 ```
 
 Current todos:
-- save model
 - apply value functions
 - test full configuration
 - apply masked dropout
+- evaluate within the graph

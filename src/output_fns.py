@@ -277,7 +277,7 @@ class SRLBilinear(OutputLayer):
         batch_seq_len = input_shape[1]
 
         # indices of predicates
-        predicate_preds = predicate_preds_train # ! if not self.in_eval_mode else predicate_preds_eval
+        predicate_preds = predicate_preds_train if not self.in_eval_mode else predicate_preds_eval
         # [PRED_COUNT, 2] (batch_row, sentence_pos for each predicate)
         predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
 
@@ -315,10 +315,10 @@ class SRLBilinear(OutputLayer):
         seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [BATCH_SIZE]
 
         transition_params = self.static_params["transition_params"]
-        # if transition_params is not None and self.in_eval_mode:
-        #     num_predicates = shape_list(srl_logits_transposed)[0]
-        #     if tf.not_equal(num_predicates, 0):
-        #         predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+        if transition_params is not None and self.in_eval_mode:
+            num_predicates = shape_list(srl_logits_transposed)[0]
+            if tf.not_equal(num_predicates, 0):
+                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
 
         # todo AG clear the mess
         output = {
@@ -381,7 +381,7 @@ class SRLBilinear(OutputLayer):
             log_likelihood, transition_params = crf_log_likelihood(
                 srl_logits_transposed,
                 srl_targets_predicted_predicates,
-                tf.repeat(seq_lens, gold_predicate_counts),  # todo AG what happens on inference when preds don't match
+                seq_lens,
                 transition_params
             )
             loss = tf.reduce_mean(-log_likelihood)

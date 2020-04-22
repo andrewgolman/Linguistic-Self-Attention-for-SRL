@@ -11,7 +11,6 @@ from opennmt.layers.position import SinusoidalPositionEncoder
 import tensorflow.python.training.tracking.tracking as tracking
 
 
-
 # https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
 class NotTrackableDict(tracking.NotTrackable, dict):
     def __init__(self, data):
@@ -59,8 +58,7 @@ class LISAModel(tf.keras.models.Model):
         self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
         self.transformer_layers = [
-            transformer_layer.TransformerLayer(i+1, self.task_config.get(i),
-                                               self.layer_config, self.hparams, self.attention_config)
+            transformer_layer.TransformerLayer(i, self.layer_config, self.hparams, self.attention_config)
             for i in range(self.num_layers)
         ]
         self.positional_encoder = SinusoidalPositionEncoder()
@@ -263,10 +261,14 @@ class LISAModel(tf.keras.models.Model):
         self.eval_loss_history = []
         for f in self.output_layers.values():
             f.in_eval_mode = True
+        for l in self.transformer_layers:
+            l.start_custom_eval()
         for metric in self.custom_metrics:
             metric.reset_states()
 
     def end_custom_eval(self):
         for f in self.output_layers.values():
             f.in_eval_mode = False
+        for l in self.transformer_layers:
+            l.end_custom_eval()
         self.custom_eval = False

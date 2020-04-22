@@ -6,6 +6,7 @@ from base_fns import FunctionDispatcher
 class CopyFromOutput(FunctionDispatcher):
     def __init__(self, *args, **kwargs):
         super(CopyFromOutput, self).__init__(*args, **kwargs)
+        self.batch_norm = tf.keras.layers.LayerNormalization()
 
     def make_call(self, features, train_attention_to_copy, eval_attention_to_copy):
         attention_to_copy = train_attention_to_copy if not self.in_eval_mode else eval_attention_to_copy
@@ -21,9 +22,11 @@ class CopyFromOutput(FunctionDispatcher):
                 off_value=constants.VERY_SMALL
             )
 
-        return attention_to_copy
+        return self.batch_norm(attention_to_copy)
+        # return attention_to_copy  # todo AG pass grads?
 
 # todo AG masks
+
 
 class LabelAttention(FunctionDispatcher):
     def __init__(self, *args, **kwargs):

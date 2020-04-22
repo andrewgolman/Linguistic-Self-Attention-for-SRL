@@ -8,6 +8,14 @@ from opennmt.layers.transformer import SelfAttentionEncoderLayer, MultiHeadAtten
 
 class MultiHeadAttentionWithSpecial(MultiHeadAttention):
 
+    # @staticmethod
+    # def split_heads(x, num_heads):
+    #     return tf.transpose(split_last_dimension(x, num_heads), [0, 2, 1, 3])
+    #
+    # @staticmethod
+    # def combine_heads(x):
+    #     return combine_last_two_dimensions(tf.transpose(x, [0, 2, 1, 3]))
+
     def call(self, inputs, memory=None, mask=None, cache=None, training=None, specials=None):
         """
         Runs the layer.
@@ -74,13 +82,26 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
         attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
         # Replace last heads with special heads. todo AG optimize
-        unstacked_attn = tf.unstack(attn, axis=1)
-        for i, t in enumerate(special_attn):
-            unstacked_attn[-i] = t
-        attn = tf.stack(unstacked_attn, axis=1)
-        for i, t, in enumerate(special_values):
-            raise NotImplementedError
-        # values = tf.concat(special_values + [values], axis=1)
+        print("==== DEBUG ====")
+        print(tf.size(special_attn))
+        print(len(special_attn))
+        print(tf.equal(tf.size(special_attn), 0))
+        print(tf.equal(len(special_attn), 0))
+        if len(special_attn) > 0:
+            unstacked_attn = tf.unstack(attn, axis=1)  # [..., HEADS, SEQ_LEN, SEQ_LEN]
+            for i, t in enumerate(special_attn):
+                unstacked_attn[-i] = t
+                # tf.stop_gradient(unstacked_attn[-i])
+            attn = tf.stack(unstacked_attn, axis=1)
+
+        # if tf.not_equal(tf.size(special_values), 0):
+        #     from opennmt.utils.misc import shape_list
+        #     print(shape_list(values))
+        #     unstacked_values = tf.unstack(values, axis=1)
+        #     for i, t in enumerate(special_values):
+        #         unstacked_values[-i] = t
+        #         # tf.stop_gradient(unstacked_attn[-i])
+        #     values = tf.stack(unstacked_values, axis=1)
 
         drop_attn = onmt_transformer.common.dropout(attn, self.dropout, training=training)
         heads = tf.matmul(drop_attn, values)
@@ -131,10 +152,10 @@ class SelfAttentionEncoderLayerWithSpecial(SelfAttentionEncoderLayer):
 
 
 class TransformerLayer(keras.layers.Layer):
-    def __init__(self, transformer_layer_id, task_config, layer_config, hparams, attn_config):
+    def __init__(self, transformer_layer_id, layer_config, hparams, attn_config):
         super(TransformerLayer, self).__init__()
         self.transformer_layer_id = transformer_layer_id
-        self.task_config = task_config
+
         self.layer_config = layer_config
         self.hparams = hparams
         self.attn_config = attn_config
@@ -196,3 +217,15 @@ class TransformerLayer(keras.layers.Layer):
 
         features = self.sa_layer(features, mask=mask, specials=(special_attn, special_values))
         return features
+
+    def start_custom_eval(self):
+        for f in self.attention_fns:
+            f.in_eval_mode = True
+        for f in self.value_fns:
+            f.in_eval_mode = True
+
+    def end_custom_eval(self):
+        for f in self.attention_fns:
+            f.in_eval_mode = False
+        for f in self.value_fns:
+            f.in_eval_mode = False
