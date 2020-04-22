@@ -49,16 +49,17 @@ class FunctionDispatcher(keras.layers.Layer):
         :param embeddings: Dict
         :return: function output
         """
-        labels = {key: labels.get(value) for key, value in self.label_params.items()} if labels else {}
-        outputs = {key: outputs.get(layer_name, {}).get(field_name) for key, (layer_name, field_name) in self.output_params.items()} if outputs else {}
-        embeddings = {key: embeddings.get(value) for key, value in self.embedding_params.items()} if embeddings else {}
+        labels = {key: labels[value] for key, value in self.label_params.items()} if labels else {}
+        outputs = {key: outputs[layer_name][field_name] for key, (layer_name, field_name) in self.output_params.items()} if outputs else {}
+        embeddings = {key: embeddings[value] for key, value in self.embedding_params.items()} if embeddings else {}
+        print(self)
         return self.make_call(data, **labels, **outputs, **embeddings)
 
     def make_call(self, data, **kwargs):
         """
         Function-layer call method
         :param data: [features(Tensor), mask(Tensor)]
-        :param kwargs: function arguments. Might contain excessive arguments  # todo arc do not pass it
+        :param kwargs: function arguments. Might contain excessive arguments  # todo do not pass it
         :return:
         """
         raise NotImplementedError

@@ -175,10 +175,10 @@ class Vocab:
 
       # check whether we need to build joint_label_lookup_map
       if 'label_components' in self.data_config[v]:
-        joint_vocab_map = vocabs[vocabs_index[v]]
-        label_components = self.data_config[v]['label_components']
-        component_keys = [vocabs[vocabs_index[d]].keys() for d in label_components]
-        component_maps = [dict(zip(comp_keys, range(len(comp_keys)))) for comp_keys in component_keys]
+        joint_vocab_map = vocabs[vocabs_index[v]]  # vocabs["joint_pos_predicate"]
+        label_components = self.data_config[v]['label_components']  # "gold_pos", "predicate"
+        component_keys = [vocabs[vocabs_index[d]].keys() for d in label_components]  # list of vocab keys
+        component_maps = [dict(zip(comp_keys, range(len(comp_keys)))) for comp_keys in component_keys]  # w2i
         map_names = ["%s_to_%s" % (v, label_comp) for label_comp in label_components]
         joint_to_comp_maps = [np.zeros([len(joint_vocab_map), 1], dtype=np.int32) for _ in label_components]
         for joint_idx, joint_label in enumerate(joint_vocab_map.keys()):

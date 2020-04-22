@@ -377,8 +377,8 @@ class SRLBilinear(OutputLayer):
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(predicted_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_pred_indices)
 
-        if transition_params is not None and not self.in_eval_mode:  # todo AG update transition params
-            log_likelihood, transition_params = crf_log_likelihood(
+        if transition_params is not None and not self.in_eval_mode:
+            log_likelihood, self.static_params['transition_params'] = crf_log_likelihood(
                 srl_logits_transposed,
                 srl_targets_predicted_predicates,
                 seq_lens,

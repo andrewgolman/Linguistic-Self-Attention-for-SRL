@@ -73,6 +73,7 @@ def main():
     hparams = train_utils.load_hparams(args, model_config)
 
     # Set the random seed. This defaults to int(time.time()) if not otherwise set.
+    # todo check why results differ on similar runs
     np.random.seed(hparams.random_seed)
     tf.random.set_seed(hparams.random_seed)
 
@@ -118,9 +119,11 @@ def main():
     train_batch_generator = train_utils.batch_generator(task_list_size,
                                                         lookup_ops, data_config, dev_filenames, num_epochs=10,
                                                         shuffle=True,
-                                                        batch_size=2)  # hparams.batch_size
-    val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=2, num_epochs=1, shuffle=False)
+                                                        batch_size=7)  # hparams.batch_size
+    val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=7, num_epochs=1, shuffle=False)
 
+    batch = next(train_batch_generator)
+    model(batch[0])
     model.fit(
         train_batch_generator,
         epochs=1,
@@ -133,8 +136,8 @@ def main():
 
     model.fit(
         train_batch_generator,
-        epochs=100,
-        steps_per_epoch=10,
+        epochs=10,
+        steps_per_epoch=100,
         callbacks=[eval_callback, lr_schedule_callback],
     )
 

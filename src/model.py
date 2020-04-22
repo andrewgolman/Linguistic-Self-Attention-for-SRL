@@ -38,11 +38,9 @@ class LISAModel(tf.keras.models.Model):
 
         self.num_layers = max(self.task_config.keys()) + 1
 
-        # load transition parameters
-        self.transition_stats = util.load_transition_params(self.task_config, self.vocab)
-        # todo don't save it
+        transition_stats = util.load_transition_params(self.task_config, self.vocab)
 
-        self.init_layers()
+        self.init_layers(transition_stats)
         self.init_metrics()
         self.embeddings = self.get_embeddings()
         self.custom_eval = False
@@ -51,7 +49,7 @@ class LISAModel(tf.keras.models.Model):
         logging.log(logging.INFO,
                     "Created model with {} trainable parameters".format(util.count_model_params(self)))
 
-    def init_layers(self):
+    def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)
         self.layer_norm = L.LayerNormalization()  # epsilon=1e-6
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
@@ -74,7 +72,7 @@ class LISAModel(tf.keras.models.Model):
                     model_config=self.model_config,
                     task_vocab_size=task_vocab_size,
                     joint_lookup_maps=self.vocab.joint_label_lookup_maps,
-                    transition_params=self.transition_stats.get(task),
+                    transition_params=transition_stats.get(task),
                     hparams=self.hparams,
                 )
 
@@ -195,7 +193,7 @@ class LISAModel(tf.keras.models.Model):
 
         outputs = {
             'mask': mask,  # loss needs it
-            'tokens': tokens,  # todo AG how come we need it
+            'tokens': tokens,  # will be used in evaluation, srl.pl needs words  # todo or does it?
         }
 
         features = self.initial_dropout(features)

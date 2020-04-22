@@ -47,10 +47,10 @@ class BaseMetric:
         tokens = predictions['tokens']
         mask = predictions['mask']
 
-        labels = {key: labels.get(value) for key, value in self.label_params.items()}
-        outputs = {key: predictions.get(layer_name, {}).get(field_name)
+        labels = {key: labels[value] for key, value in self.label_params.items()}
+        outputs = {key: predictions[layer_name].get(field_name)  # todo remove extra args from configs
                    for key, (layer_name, field_name) in self.output_params.items()}
-        tokens = {key: tokens.get(value) for key, value in self.token_params.items()}
+        tokens = {key: tokens[value] for key, value in self.token_params.items()}
 
         params = {}
         params.update(labels)
@@ -76,7 +76,6 @@ class Accuracy(BaseMetric):
         :param labels: [BATCH_SIZE, SEQ_LEN]
         :param outputs: [BATCH_SIZE, SEQ_LEN]
         :param mask: [BATCH_SIZE, SEQ_LEN]
-        :return: todo AG ops or number?
         """
 
         self.accuracy.update_state(labels, outputs, sample_weight=mask)
@@ -193,29 +192,6 @@ dispatcher = {
 }
 
 
-class CallMetricsCallback(tf.keras.callbacks.Callback):
-    """
-    todo docs
-    """
-    def __init__(self, metrics, validation_data):
-        super(CallMetricsCallback, self).__init__()
-        self.metrics = metrics
-        self.X_val, self.Y_val = validation_data
-
-    def run_eval(self):
-        Y_pred = self.model.predict(self.X_val)
-        scores = {}
-        for metric in self.metrics:
-            scores[(metric.task, metric.name)] = metric(self.Y_val, Y_pred)
-        return scores
-
-    def on_epoch_end(self, epoch, logs={}):
-        scores = self.run_eval()
-        print("EPOCH:", epoch)
-        for k, v in scores.items():
-            print(k, ":", v)
-
-
 def print_model_metrics(model):
     metrics = model.get_metrics()
     print("Validation losses")
@@ -228,7 +204,8 @@ def print_model_metrics(model):
 
 class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     """
-    todo docs
+    On every epoch end: sets evaluation mode, passes validation data, prints metrics
+    TODO: do it in within graph, currently eval_fns_np fails due to tf2.x data format
     """
     def __init__(self, dataset):
         super(EvalMetricsCallBack, self).__init__()
