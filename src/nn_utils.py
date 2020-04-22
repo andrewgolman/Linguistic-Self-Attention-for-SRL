@@ -57,30 +57,27 @@ class Bilinear(L.Layer):
 
 
 class BilinearClassifier(L.Layer):
-    def __init__(self, n_outputs, dropout=0, noise_shape=None):
-        # noise_shape = [batch_size, 1, input_size]
-
-        # NARY
-        # noise_shape1 = tf.stack([batch_size1, 1, input_size1])
-        # noise_shape2 = tf.stack([batch_size2, 1, input_size2])
-
+    def __init__(self, n_outputs, dropout=0, left_input_size=1, right_input_size=1):
         super(BilinearClassifier, self).__init__()
         self.bilinear = Bilinear(n_outputs)
-        self.dropout = L.Dropout(dropout)
+        self.left_dropout = L.Dropout(dropout, noise_shape=[None, 1, left_input_size])
+        self.right_dropout = L.Dropout(dropout, noise_shape=[None, 1, right_input_size])
 
     def call(self, data):
         left, right = data
-        left = self.dropout(left)
-        right = self.dropout(right)
+        left = self.left_dropout(left)
+        right = self.right_dropout(right)
         bilin = self.bilinear([left, right])
         return bilin
 
 
 class ConditionalBilinearClassifier(L.Layer):
-    def __init__(self, n_outputs, dropout, noise_shape=None):
+    def __init__(self, n_outputs, dropout, left_input_size, right_input_size):
         #     noise_shape = tf.stack([batch_size, 1, input_size])
         super(ConditionalBilinearClassifier, self).__init__()
-        self.bilinear = BilinearClassifier(n_outputs)
+        self.left_dropout = L.Dropout(dropout, noise_shape=[None, 1, left_input_size])
+        self.right_dropout = L.Dropout(dropout, noise_shape=[None, 1, right_input_size])
+        self.bilinear = Bilinear(n_outputs)
         self.n_outputs = n_outputs
 
     def call(self, data):
@@ -88,6 +85,8 @@ class ConditionalBilinearClassifier(L.Layer):
         # left: [BATCH_SIZE, SEQ_LEN, HID]  todo AG check all calls
         # right: [BATCH_SIZE, SEQ_LEN, HID]
         # probs: [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
+        left = self.left_dropout(left)
+        right = self.right_dropout(right)
         bilin = self.bilinear([left, right])
 
         input_shape = tf.shape(left)

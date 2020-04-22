@@ -44,5 +44,5 @@ python src/train.py \
 Current todos:
 - apply value functions
 - test full configuration
-- apply masked dropout
 - evaluate within the graph
+- add various preprocessors

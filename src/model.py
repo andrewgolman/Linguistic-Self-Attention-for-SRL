@@ -50,9 +50,10 @@ class LISAModel(tf.keras.models.Model):
                     "Created model with {} trainable parameters".format(util.count_model_params(self)))
 
     def init_layers(self, transition_stats):
-        self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)
+        self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
         self.layer_norm = L.LayerNormalization()  # epsilon=1e-6
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
+        self.hparams['sa_hidden_size'] = sa_hidden_size
         self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
         self.transformer_layers = [

@@ -29,7 +29,7 @@ class OutputLayer(FunctionDispatcher):
 class SoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, task_vocab_size, **params):
         super(SoftmaxClassifier, self).__init__(transformer_layer_id, **params)
-        self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
+        self.dropout = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, self.hparams.sa_hidden_size])
         self.dense = L.Dense(task_vocab_size, activation=L.LeakyReLU(alpha=0.1))
 
         self.loss = tf.keras.losses.CategoricalCrossentropy(
@@ -73,12 +73,13 @@ class SoftmaxClassifier(OutputLayer):
 class JointSoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, **params):
         super(JointSoftmaxClassifier, self).__init__(transformer_layer_id, **params)
-        self.dense1 = L.Dense(self.static_params['model_config']['predicate_pred_mlp_size'],
-                              activation=L.LeakyReLU(alpha=0.1))
-        self.dropout1 = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense2 = L.Dense(self.static_params['task_vocab_size'],
-                              activation=L.LeakyReLU(alpha=0.1))
-        self.dropout2 = L.Dropout(1 - self.hparams.mlp_dropout)
+        shape0 = self.hparams.sa_hidden_size
+        shape1 = self.static_params['model_config']['predicate_pred_mlp_size']
+        shape2 = self.static_params['task_vocab_size']
+        self.dropout1 = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, shape0])
+        self.dense1 = L.Dense(shape1, activation=L.LeakyReLU(alpha=0.1))
+        self.dropout2 = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, shape1])
+        self.dense2 = L.Dense(shape2, activation=L.LeakyReLU(alpha=0.1))
 
     def get_separate_scores_preds_from_joint(self, joint_outputs, joint_num_labels):
       joint_maps = self.static_params['joint_maps']
@@ -143,19 +144,24 @@ class JointSoftmaxClassifier(OutputLayer):
 
 
 class ParseBilinear(OutputLayer):
+    # todo architecture: unify parse bilinear and conditional bilinear
     def __init__(self, transformer_layer_id, **params):
         super(ParseBilinear, self).__init__(transformer_layer_id, **params)
         self.class_mlp_size = self.static_params['model_config']['class_mlp_size']
         self.attn_mlp_size = self.static_params['model_config']['attn_mlp_size']
-        self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
+        self.dropout1 = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, self.hparams.sa_hidden_size])
         self.dense1 = L.Dense(2 * (self.class_mlp_size + self.attn_mlp_size),
                               activation=L.LeakyReLU(alpha=0.1))
-        self.bilinear = nn_utils.BilinearClassifier(1, 1 - self.hparams.bilinear_dropout)
+        self.bilinear = nn_utils.BilinearClassifier(
+            1, dropout=1 - self.hparams.bilinear_dropout,
+            left_input_size=self.attn_mlp_size, right_input_size=self.attn_mlp_size
+        )
 
     def make_call(self, data, **kwargs):
         features, mask = data
         # todo AG check all dense for dropout noise shape
 
+        features = self.dropout1(features)
         features = self.dense1(features)
         dep_mlp, head_mlp = tf.split(value=features, num_or_size_splits=2, axis=-1)
 
@@ -200,7 +206,9 @@ class ConditionalBilinear(OutputLayer):
         super(ConditionalBilinear, self).__init__(transformer_layer_id, **params)
         self.cond_bilinear = nn_utils.ConditionalBilinearClassifier(
             self.static_params['task_vocab_size'],
-            1 - self.hparams.bilinear_dropout
+            1 - self.hparams.bilinear_dropout,
+            self.static_params['model_config']['class_mlp_size'],
+            self.static_params['model_config']['class_mlp_size'],
         )
 
     def make_call(self, data, dep_rel_mlp, head_rel_mlp, parse_preds_train, parse_preds_eval, **kwargs):
@@ -239,13 +247,15 @@ class SRLBilinear(OutputLayer):
         self.predicate_mlp_size = self.static_params['model_config']['predicate_mlp_size']
         self.role_mlp_size = self.static_params['model_config']['role_mlp_size']
 
-        self.dropout = L.Dropout(1 - self.hparams.mlp_dropout)
+        self.dropout1 = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, self.hparams.sa_hidden_size])
         self.dense1 = L.Dense(self.predicate_mlp_size + self.role_mlp_size,
                               activation=L.LeakyReLU(alpha=0.1))
 
         self.bilinear = nn_utils.BilinearClassifier(
             self.static_params['task_vocab_size'],
-            1 - self.hparams.bilinear_dropout
+            1 - self.hparams.bilinear_dropout,
+            left_input_size=self.predicate_mlp_size,
+            right_input_size=self.role_mlp_size,
         )
 
         self.eval_loss = tf.keras.losses.CategoricalCrossentropy(
@@ -281,7 +291,7 @@ class SRLBilinear(OutputLayer):
         predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
 
         # (1) project into predicate, role representations
-        features = self.dropout(features)
+        features = self.dropout1(features)
         predicate_role_mlp = self.dense1(features)  # [BATCH_SIZE, SEQ_LEN, predicate_mlp_size+role_mlp_size]
         predicate_mlp = predicate_role_mlp[:, :, :self.predicate_mlp_size]  # [BATCH_SIZE, SEQ_LEN, predicate_mlp_size]
         role_mlp = predicate_role_mlp[:, :, self.predicate_mlp_size:]  # [BATCH_SIZE, SEQ_LEN, role_mlp_size]
