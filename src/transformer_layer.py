@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow.keras as keras
-import attention_fns
 from opennmt.layers import transformer as onmt_transformer
 from opennmt.layers.transformer import SelfAttentionEncoderLayer, MultiHeadAttention, TransformerLayerWrapper
 # https://github.com/OpenNMT/OpenNMT-tf/blob/master/opennmt/layers/transformer.py#L339
@@ -82,13 +81,8 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
         attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
         # Replace last heads with special heads. todo AG optimize
-        # print("==== DEBUG ====")
-        # print(tf.size(special_attn))
-        # print(len(special_attn))
-        # print(tf.equal(tf.size(special_attn), 0))
-        # print(tf.equal(len(special_attn), 0))
         if len(special_attn) > 0:
-            unstacked_attn = tf.unstack(attn, axis=1)  # [..., HEADS, SEQ_LEN, SEQ_LEN]
+            unstacked_attn = tf.unstack(attn, axis=1)  # [BATCH_SIZE, HEADS, SEQ_LEN, SEQ_LEN]
             for i, t in enumerate(special_attn):
                 unstacked_attn[-i] = t
                 # tf.stop_gradient(unstacked_attn[-i])
@@ -150,28 +144,15 @@ class SelfAttentionEncoderLayerWithSpecial(SelfAttentionEncoderLayer):
 
 
 class TransformerLayer(keras.layers.Layer):
-    def __init__(self, transformer_layer_id, layer_config, hparams, attn_config):
+    def __init__(self, transformer_layer_id, layer_config, attn_fns, val_fns, hparams):
         super(TransformerLayer, self).__init__()
         self.transformer_layer_id = transformer_layer_id
 
         self.layer_config = layer_config
         self.hparams = hparams
-        self.attn_config = attn_config
 
-        self.attention_fns = []
-        self.value_fns = []
-
-        if self.transformer_layer_id in self.attn_config:
-            this_layer_attn_config = self.attn_config[self.transformer_layer_id]
-            for attn_fn, attn_fn_map in this_layer_attn_config.get('attention_fns', {}).items():
-                self.attention_fns.append(
-                    attention_fns.dispatcher[attn_fn_map['name']](attn_fn_map)
-                )
-
-            for value_fn, value_fn_map in this_layer_attn_config.get('value_fns', {}).items():
-                self.value_fns.append(
-                    attention_fns.dispatcher[value_fn_map['name']](value_fn_map)
-                )
+        self.attention_fns = attn_fns
+        self.value_fns = val_fns
 
         self.sa_layer = SelfAttentionEncoderLayerWithSpecial(  # todo AG 2-layer FFN vs 3 in original LISA
             num_heads=self.layer_config['num_heads'],

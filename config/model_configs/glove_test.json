@@ -1,9 +1,9 @@
 {
- "predicate_mlp_size": 20,
- "role_mlp_size": 20,
- "predicate_pred_mlp_size": 20,
- "class_mlp_size": 10,
- "attn_mlp_size": 50,
+ "predicate_mlp_size": 40,
+ "role_mlp_size": 40,
+ "predicate_pred_mlp_size": 40,
+ "class_mlp_size": 20,
+ "attn_mlp_size": 100,
  "hparams": {
    "label_smoothing": 0.1,
    "input_dropout": 0.8,
@@ -21,19 +21,25 @@
    "beta2": 0.98,
    "epsilon": 1e-12,
    "use_nesterov": true,
-   "batch_size": 4
+   "batch_size": 64
  },
  "layers": {
    "type": "transformer",
-   "num_heads": 4,
+   "num_heads": 5,
    "head_dim": 24,
-   "ff_hidden_size": 80
+   "ff_hidden_size": 100
  },
  "embeddings": {
    "word_type": {
      "embedding_dim": 100,
      "pretrained_embeddings": "embeddings/test_embeddings.txt"
-   }
+   },
+   "gold_pos": {
+      "embedding_dim": 24
+    },
+    "parse_label": {
+      "embedding_dim": 24
+    }
  },
  "inputs": [
    "word_type"

@@ -1,40 +1,24 @@
 import numpy as np
 import tensorflow as tf
-import os
 import sys
 import tensorflow.compat.v1.logging as logging
-# from tensorflow.keras.utils.layer_utils import count_params
-
-
-# from typing import
 
 
 def fatal_error(message):
-  tf.compat.v1.logging.error(message)
-  sys.exit(1)
+    tf.compat.v1.logging.error(message)
+    sys.exit(1)
 
 
 def init_logging(verbosity):
-  logging.set_verbosity(verbosity)
-  logging.log(logging.INFO, "Using Python version %s" % sys.version)
-  logging.log(logging.INFO, "Using TensorFlow version %s" % tf.__version__)
+    logging.set_verbosity(verbosity)
+    logging.log(logging.INFO, "Using Python version %s" % sys.version)
+    logging.log(logging.INFO, "Using TensorFlow version %s" % tf.__version__)
 
 
 def batch_str_decode(string_array, codec='utf-8'):
   string_array = np.array(string_array)
   return np.reshape(np.array(list(map(lambda p: p if not p or isinstance(p, str) else p.decode(codec),
                              np.reshape(string_array, [-1])))), string_array.shape)
-
-
-def sequence_mask_np(lengths, maxlen=None):
-  if not maxlen:
-    maxlen = np.max(lengths)
-  return np.arange(maxlen) < np.array(lengths)[:, None]
-
-
-def get_immediate_subdirectories(a_dir):
-  return [name for name in os.listdir(a_dir) if os.path.isdir(os.path.join(a_dir, name))]
-
 
 def load_transitions(transition_statistics, num_classes, vocab_map):
   transition_statistics_np = np.zeros((num_classes, num_classes))
@@ -48,7 +32,7 @@ def load_transitions(transition_statistics, num_classes, vocab_map):
 
 def load_pretrained_embeddings(pretrained_fname: str) -> np.array:
   """
-  AG: Load float matrix from one file
+  Load float matrix from one file
   """
   logging.log(logging.INFO, "Loading pre-trained embedding file: %s" % pretrained_fname)
 
@@ -64,15 +48,6 @@ def load_pretrained_embeddings(pretrained_fname: str) -> np.array:
   pretrained_embeddings = np.array(pretrained_embeddings)
   pretrained_embeddings /= np.std(pretrained_embeddings)
   return pretrained_embeddings
-
-
-def get_token_take_mask(task, task_config, outputs):
-  task_map = task_config[task]
-  token_take_mask = None
-  if "token_take_mask" in task_map:
-    token_take_conf = task_map["token_take_mask"]
-    token_take_mask = outputs["%s_%s" % (token_take_conf["layer"], token_take_conf["output"])]
-  return token_take_mask
 
 
 def load_transition_params(task_config, vocab):
@@ -110,6 +85,7 @@ def load_feat_label_idx_maps(data_config):
         label_idx_map[f] = (i, i+1)
   return feature_idx_map, label_idx_map
 
+
 def combine_attn_maps(layer_config, attention_config, task_config):
   layer_task_config = {}
   layer_attention_config = {}
@@ -125,16 +101,6 @@ def combine_attn_maps(layer_config, attention_config, task_config):
   return layer_task_config, layer_attention_config
 
 
-def count_model_params(model):
-    # trainable_count = count_params(model.trainable_weights)
-    # non_trainable_count = count_params(model.non_trainable_weights)
-    return "TODO"  # trainable_count, non_trainable_count
-
-
-def dict2list(d, keys):  # pass keys explicitly for safety
-    return [d.get(k, 0) for k in sorted(keys)]
-
-
 def list2dict(l, keys):
     # assert len(l) == len(keys), (len(l), keys)
     keys = sorted(keys)
@@ -143,3 +109,12 @@ def list2dict(l, keys):
 
 def task_list(task_config):
     return sum([list(v.keys()) for v in task_config.values()], [])
+
+
+import tensorflow.python.training.tracking.tracking as tracking
+
+# https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
+class NotTrackableDict(tracking.NotTrackable, dict):
+    def __init__(self, data):
+        tracking.NotTrackable.__init__(self)
+        dict.__init__(self, data)

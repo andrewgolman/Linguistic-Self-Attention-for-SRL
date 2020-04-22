@@ -1,6 +1,9 @@
 {
   "joint_pos_predicate": 1,
+  "pos_attention": 2,
   "parse_head": 2,
   "parse_label": 2,
-  "srl": 3
+  "parse_label_attention": 3,
+  "parse_attention": 3,
+  "srl": 4
 }

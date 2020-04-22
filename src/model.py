@@ -5,17 +5,11 @@ import metrics
 import output_fns
 import util
 import transformer_layer
+import attention_fns
 import constants
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
-import tensorflow.python.training.tracking.tracking as tracking
-
-
-# https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
-class NotTrackableDict(tracking.NotTrackable, dict):
-    def __init__(self, data):
-        tracking.NotTrackable.__init__(self)
-        dict.__init__(self, data)
+from util import NotTrackableDict
 
 
 class LISAModel(tf.keras.models.Model):
@@ -40,14 +34,11 @@ class LISAModel(tf.keras.models.Model):
 
         transition_stats = util.load_transition_params(self.task_config, self.vocab)
 
+        self.embeddings = self.get_embeddings()
         self.init_layers(transition_stats)
         self.init_metrics()
-        self.embeddings = self.get_embeddings()
         self.custom_eval = False
         self.eval_loss_history = []
-
-        logging.log(logging.INFO,
-                    "Created model with {} trainable parameters".format(util.count_model_params(self)))
 
     def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
@@ -55,12 +46,27 @@ class LISAModel(tf.keras.models.Model):
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.hparams['sa_hidden_size'] = sa_hidden_size
         self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
-
-        self.transformer_layers = [
-            transformer_layer.TransformerLayer(i, self.layer_config, self.hparams, self.attention_config)
-            for i in range(self.num_layers)
-        ]
         self.positional_encoder = SinusoidalPositionEncoder()
+
+        self.transformer_layers = []
+        for i in range(self.num_layers):
+            attn_fns = []
+            value_fns = []
+
+            if i in self.attention_config:
+                this_layer_attn_config = self.attention_config[i]
+                for attn_fn, attn_fn_map in this_layer_attn_config.get('attention_fns', {}).items():
+                    attn_fns.append(
+                        attention_fns.dispatcher[attn_fn_map['name']](attn_fn_map)
+                    )
+
+                for value_fn, value_fn_map in this_layer_attn_config.get('value_fns', {}).items():
+                    value_fns.append(
+                        attention_fns.dispatcher[value_fn_map['name']](value_fn_map, embeddings=self.embeddings)
+                    )
+            self.transformer_layers.append(
+                transformer_layer.TransformerLayer(i, self.layer_config, attn_fns, value_fns, self.hparams)
+            )
 
         self.output_layers = {}
         for layer_id in self.task_config:
