@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tqdm import tqdm
 
 
 def print_model_metrics(model):
@@ -11,8 +12,6 @@ def print_model_metrics(model):
             print(k, ":", v)
 
 
-from tqdm import tqdm
-
 class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     """
     On every epoch end: sets evaluation mode, passes validation data, prints metrics
@@ -22,15 +21,9 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
         super(EvalMetricsCallBack, self).__init__()
         self.ds = dataset
 
-    # def on_epoch_end(self, epoch, logs={}):
-    #     self.model.start_custom_eval()
-    #     for batch in self.ds.as_numpy_iterator():
-    #         self.model(batch)
-    #         # self.model.predict(batch)
-
     def on_epoch_end(self, epoch, logs={}):
         self.model.start_custom_eval()
-        for batch in tqdm(self.ds):
+        for batch in tqdm(self.ds.as_numpy_iterator()):
             self.model(batch)
             # self.model.predict(batch)
 
@@ -46,6 +39,7 @@ class SaveCallBack(tf.keras.callbacks.Callback):
         self.save_every = save_every
 
     def on_epoch_end(self, epoch, logs={}):
+        save_path = "{}/checkpoint_epoch_{}".format(self.path, epoch + 1)
         if (epoch + 1) % self.save_every == 0:
-            print("Epoch {}, saving model into {}".format(epoch + 1, self.path))
-            self.model.save_weights(self.path, save_format='tf')
+            print("Epoch {}, saving model into {}".format(epoch + 1, save_path))
+            self.model.save_weights(save_path, save_format='tf')

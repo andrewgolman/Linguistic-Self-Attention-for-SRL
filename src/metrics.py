@@ -135,7 +135,7 @@ class ConllSrlEval(BaseMetric):
         recall = correct_count / (correct_count + missed_count + EPS)
         f1 = 2 * precision * recall / (precision + recall + EPS)
 
-        return f1
+        return precision, recall, f1
 
 
 class ConllParseEval(BaseMetric):
