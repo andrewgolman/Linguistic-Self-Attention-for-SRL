@@ -111,7 +111,7 @@ def main():
         shuffle=True, batch_size=hparams.batch_size
     )
     model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
-    model.load_weights("model/checkpoint_epoch_8")
+    model.load_weights(args.checkpoint)
 
     model.start_custom_eval()
     for batch in tqdm(test_dataset.as_numpy_iterator()):
