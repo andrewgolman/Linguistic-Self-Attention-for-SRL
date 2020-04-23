@@ -52,7 +52,6 @@ class FunctionDispatcher(keras.layers.Layer):
         labels = {key: labels[value] for key, value in self.label_params.items()} if labels else {}
         outputs = {key: outputs[layer_name][field_name] for key, (layer_name, field_name) in self.output_params.items()} if outputs else {}
         embeddings = {key: self.static_params['embeddings'][value] for key, value in self.embedding_params.items()}
-        print(self)
         return self.make_call(data, **labels, **outputs, **embeddings)
 
     def make_call(self, data, **kwargs):

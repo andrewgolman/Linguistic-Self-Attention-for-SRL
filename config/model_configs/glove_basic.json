@@ -21,13 +21,17 @@
    "beta2": 0.98,
    "epsilon": 1e-12,
    "use_nesterov": true,
+
+   "train_epochs": 1000,
+   "steps_per_epoch": 600,
    "batch_size": 256
+
  },
  "layers": {
    "type": "transformer",
    "num_heads": 8,
-   "head_dim": 25,
-   "ff_hidden_size": 800
+   "head_dim": 32,
+   "ff_hidden_size": 1000
  },
  "embeddings": {
    "word_type": {

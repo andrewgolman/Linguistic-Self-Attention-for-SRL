@@ -7,14 +7,6 @@ from opennmt.layers.transformer import SelfAttentionEncoderLayer, MultiHeadAtten
 
 class MultiHeadAttentionWithSpecial(MultiHeadAttention):
 
-    # @staticmethod
-    # def split_heads(x, num_heads):
-    #     return tf.transpose(split_last_dimension(x, num_heads), [0, 2, 1, 3])
-    #
-    # @staticmethod
-    # def combine_heads(x):
-    #     return combine_last_two_dimensions(tf.transpose(x, [0, 2, 1, 3]))
-
     def call(self, inputs, memory=None, mask=None, cache=None, training=None, specials=None):
         """
         Runs the layer.
@@ -85,14 +77,14 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
             unstacked_attn = tf.unstack(attn, axis=1)  # [BATCH_SIZE, HEADS, SEQ_LEN, SEQ_LEN]
             for i, t in enumerate(special_attn):
                 unstacked_attn[-i] = t
-                # tf.stop_gradient(unstacked_attn[-i])
+        #         tf.stop_gradient(unstacked_attn[-i])
             attn = tf.stack(unstacked_attn, axis=1)
 
         if len(special_values) > 0:
             unstacked_values = tf.unstack(values, axis=1)
             for i, t in enumerate(special_values):
                 unstacked_values[-i] = t
-                # tf.stop_gradient(unstacked_attn[-i])
+        #         tf.stop_gradient(unstacked_attn[-i])
             values = tf.stack(unstacked_values, axis=1)
 
         drop_attn = onmt_transformer.common.dropout(attn, self.dropout, training=training)

@@ -10,7 +10,7 @@ DEFAULT_BUCKET_BOUNDARIES = [20, 30, 50, 80]
 VERY_LARGE = 1e9
 VERY_SMALL = -1e9
 
-# Optimizer hyperparameters
+# Training hyperparameters
 hparams = {
   'learning_rate': 0.04,
   'decay_rate': 1.5,
@@ -24,7 +24,7 @@ hparams = {
   'shuffle_buffer_multiplier': 100,
   'eval_throttle_secs': 1000,
   'eval_every_steps': 1000,
-  'steps_per_epoch': 100,  # debug mode
+  'steps_per_epoch': 600,  # debug mode
   'num_train_epochs': 10000,
   'gradient_clip_norm': 5.0,
   'label_smoothing': 0.1,
