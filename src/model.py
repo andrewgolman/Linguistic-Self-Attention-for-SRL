@@ -9,7 +9,6 @@ import attention_fns
 import constants
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
-from util import NotTrackableDict
 
 
 class LISAModel(tf.keras.models.Model):
@@ -19,11 +18,16 @@ class LISAModel(tf.keras.models.Model):
         super(LISAModel, self).__init__()
         self.hparams = hparams
 
-        self.model_config = NotTrackableDict(model_config)
-        self.task_config = NotTrackableDict(task_config)
-        self.attention_config = NotTrackableDict(attention_config)
-        self.feature_idx_map = NotTrackableDict(feature_idx_map)
-        self.label_idx_map = NotTrackableDict(label_idx_map)
+        self.model_config = util.NotTrackableDict(model_config)
+        self.task_config = util.NotTrackableDict(task_config)
+        self.attention_config = util.NotTrackableDict(attention_config)
+        self.feature_idx_map = util.NotTrackableDict(feature_idx_map)
+        self.label_idx_map = util.NotTrackableDict(label_idx_map)
+        # self.model_config = model_config
+        # self.task_config = task_config
+        # self.attention_config = attention_config
+        # self.feature_idx_map = feature_idx_map
+        # self.label_idx_map = label_idx_map
         self.vocab = vocab
         self.layer_config = self.model_config['layers']
 

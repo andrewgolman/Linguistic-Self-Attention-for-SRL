@@ -356,41 +356,43 @@ class SRLBilinear(OutputLayer):
         num_labels = self.static_params['task_vocab_size']
         transition_params = self.static_params['transition_params']
 
-        srl_logits_transposed = output['scores']
-        predicate_preds = output['predicate_preds']
-        gather_mask = output['gather_mask']
-        predicate_targets = output['predicate_targets']
+        srl_logits_transposed = output['scores']  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
+        predicate_preds = output['predicate_preds']  # [BATCH_SIZE, SEQ_LEN] (0/1)
+        gather_mask = output['gather_mask']  # [PRED_COUNT, SEQ_LEN]
+        predicate_targets = output['predicate_targets']  # [BATCH_SIZE, SEQ_LEN] (0/1)
 
-        seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)
+        seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [PRED_COUNT]
+        srl_targets = tf.transpose(targets, [0, 2, 1])  # [BATCH_SIZE, max_pred_in_sample, SEQ_LEN]
 
-        # predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
-        # now we have k sets of targets for the k frames
-        # (p1) f1 f2 f3
-        # (p2) f1 f2 f3
+        if self.in_eval_mode:  # compute loss only on correctly predicted predicates
+            correct_predicate_preds = tf.math.multiply(predicate_targets, tf.cast(predicate_preds, tf.int32))
+            # correct_predicate_indices = tf.where(correct_predicate_preds)
+            loss_calculation_mask = tf.gather_nd(predicate_targets, tf.where(predicate_preds))  # [PRED_COUNT]
+            loss_calculation_ind = tf.squeeze(tf.where(loss_calculation_mask))  # [COR_PRED_COUNT]
 
-        # get all the tags for each token (which is the predicate for a frame), structuring
-        # targets as follows (assuming p1 and p2 are predicates for f1 and f3, respectively):
-        # (p1) f1 f1 f1
-        # (p2) f3 f3 f3
-        srl_targets_transposed = tf.transpose(targets, [0, 2, 1])
+            srl_logits_correct = tf.gather(srl_logits_transposed, loss_calculation_ind)  # [COR_PRED_COUNT,
+            seq_lens_correct = tf.gather(seq_lens, loss_calculation_ind)
+            gather_mask_correct = tf.gather(gather_mask, loss_calculation_ind)
+        else:
+            correct_predicate_preds = predicate_preds
+            srl_logits_correct = srl_logits_transposed
+            seq_lens_correct = seq_lens
+            gather_mask_correct = gather_mask
 
-        gold_predicate_counts = tf.reduce_sum(
-            tf.cast(self.bool_mask_where_predicates(predicate_targets, mask), tf.int32), -1)
-        srl_targets_indices = tf.where(tf.sequence_mask(tf.reshape(gold_predicate_counts, [-1])))
+        correct_predicate_counts = tf.reduce_sum(tf.cast(
+            self.bool_mask_where_predicates(correct_predicate_preds, mask), tf.int32), -1)
+        srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(correct_predicate_counts, [-1])))
+        srl_targets_predicted_predicates = tf.gather_nd(srl_targets, srl_targets_pred_indices)
 
-        # num_predicates_in_batch x seq_len
-        # srl_targets_gold_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_indices)
-
-        predicted_predicate_counts = tf.reduce_sum(tf.cast(
-            self.bool_mask_where_predicates(predicate_preds, mask), tf.int32), -1)
-        srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(predicted_predicate_counts, [-1])))
-        srl_targets_predicted_predicates = tf.gather_nd(srl_targets_transposed, srl_targets_pred_indices)
+        # gold_predicate_counts = tf.reduce_sum(
+        #     tf.cast(self.bool_mask_where_predicates(predicate_targets, mask), tf.int32), -1)
+        # srl_targets_indices = tf.where(tf.sequence_mask(tf.reshape(gold_predicate_counts, [-1])))
 
         if transition_params is not None and not self.in_eval_mode:
             log_likelihood, self.static_params['transition_params'] = crf_log_likelihood(
-                srl_logits_transposed,
+                srl_logits_correct,
                 srl_targets_predicted_predicates,
-                seq_lens,
+                seq_lens_correct,
                 transition_params
             )
             loss = tf.reduce_mean(-log_likelihood)
@@ -400,9 +402,9 @@ class SRLBilinear(OutputLayer):
                 return 1e5
             srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
             return self.eval_loss(
-                y_pred=tf.reshape(srl_logits_transposed, [-1, num_labels]),
+                y_pred=tf.reshape(srl_logits_correct, [-1, num_labels]),
                 y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-                sample_weight=tf.reshape(gather_mask, [-1])
+                sample_weight=tf.reshape(gather_mask_correct, [-1])
             )
 
         return loss

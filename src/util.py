@@ -111,10 +111,11 @@ def task_list(task_config):
     return sum([list(v.keys()) for v in task_config.values()], [])
 
 
-import tensorflow.python.training.tracking.tracking as tracking
+# import tensorflow.python.training.tracking.tracking as tracking
 
 # https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
-class NotTrackableDict(tracking.NotTrackable, dict):
+# class NotTrackableDict(tracking.NotTrackable, dict):
+class NotTrackableDict(dict):
     def __init__(self, data):
-        tracking.NotTrackable.__init__(self)
+        # tracking.NotTrackable.__init__(self)
         dict.__init__(self, data)

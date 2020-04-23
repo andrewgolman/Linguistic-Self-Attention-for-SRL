@@ -9,7 +9,7 @@ import train_utils
 from vocab import Vocab
 from model import LISAModel
 from loss import DummyLoss, SumLoss
-from metrics import EvalMetricsCallBack, print_model_metrics
+import callbacks
 import dataset
 
 import numpy as np
@@ -122,8 +122,19 @@ def main():
                                                         batch_size=7)  # hparams.batch_size
     val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=7, num_epochs=1, shuffle=False)
 
+
+    val_batches = []
+    for i, batch in enumerate(val_dataset.as_numpy_iterator()):
+        if i > 99:
+            break
+        val_batches.append(batch)
+
     batch = next(train_batch_generator)
     model(batch[0])
+    model.start_custom_eval()
+    model(batch[0])
+    model.end_custom_eval()
+
     model.fit(
         train_batch_generator,
         epochs=1,
@@ -132,16 +143,15 @@ def main():
     model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
-    eval_callback = EvalMetricsCallBack(val_dataset)
+    eval_callback = callbacks.EvalMetricsCallBack(val_batches)
+    save_callback = callbacks.SaveCallBack(path="model/m2", save_every=2)
 
     model.fit(
         train_batch_generator,
         epochs=10,
         steps_per_epoch=100,
-        callbacks=[eval_callback, lr_schedule_callback],
+        callbacks=[eval_callback, lr_schedule_callback, save_callback],
     )
-
-    model.save_weights("model/m2", save_format='tf')
 
 
 if __name__ == "__main__":
