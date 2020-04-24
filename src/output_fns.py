@@ -22,9 +22,6 @@ class OutputLayer(FunctionDispatcher):
     def loss(self, targets, output, mask):
         raise NotImplementedError
 
-    def keys(self):
-        raise NotImplementedError
-
 
 class SoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, task_vocab_size, **params):
@@ -51,13 +48,6 @@ class SoftmaxClassifier(OutputLayer):
             'probabilities': tf.nn.softmax(logits, -1)
         }
         return output
-
-    def keys(self):
-        return [
-            'predictions',
-            'scores',
-            'probabilities',
-        ]
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -129,12 +119,6 @@ class JointSoftmaxClassifier(OutputLayer):
 
         return output
 
-    def keys(self):
-        return [
-            'predictions',
-            'scores',
-            'probabilities',
-        ]
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -159,7 +143,6 @@ class ParseBilinear(OutputLayer):
 
     def make_call(self, data, **kwargs):
         features, mask = data
-        # todo AG check all dense for dropout noise shape
 
         features = self.dropout1(features)
         features = self.dense1(features)
@@ -185,15 +168,6 @@ class ParseBilinear(OutputLayer):
 
         return output
 
-    def keys(self):
-        return [
-            'predictions',
-            'probabilities',
-            'scores',
-            'dep_rel_mlp',
-            'head_rel_mlp',
-        ]
-
     def loss(self, targets, output, mask):
         logits = output['scores']
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
@@ -213,7 +187,7 @@ class ConditionalBilinear(OutputLayer):
 
     def make_call(self, data, dep_rel_mlp, head_rel_mlp, parse_preds_train, parse_preds_eval, **kwargs):
         # data is ingored, utilizing previous outputs/labels
-        parse_preds = parse_preds_train if not self.in_eval_mode else parse_preds_eval
+        parse_preds = parse_preds_train if self.teacher_forcing else parse_preds_eval
         logits, _ = self.cond_bilinear([dep_rel_mlp, head_rel_mlp, parse_preds])
         predictions = tf.argmax(logits, -1)
         probabilities = tf.nn.softmax(logits)
@@ -225,13 +199,6 @@ class ConditionalBilinear(OutputLayer):
         }
 
         return output
-
-    def keys(self):
-        return [
-            'predictions',
-            'scores',
-            'probabilities',
-        ]
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -286,7 +253,7 @@ class SRLBilinear(OutputLayer):
         batch_seq_len = input_shape[1]
 
         # indices of predicates
-        predicate_preds = predicate_preds_train if not self.in_eval_mode else predicate_preds_eval
+        predicate_preds = predicate_preds_train if self.teacher_forcing else predicate_preds_eval
         # [PRED_COUNT, 2] (batch_row, sentence_pos for each predicate)
         predicate_gather_indices = tf.where(self.bool_mask_where_predicates(predicate_preds, mask))
 
@@ -324,7 +291,7 @@ class SRLBilinear(OutputLayer):
         seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [BATCH_SIZE]
 
         transition_params = self.static_params["transition_params"]
-        if transition_params is not None and self.in_eval_mode:
+        if self.in_eval_mode:
             num_predicates = shape_list(srl_logits_transposed)[0]
             if tf.not_equal(num_predicates, 0):
                 predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
@@ -333,7 +300,6 @@ class SRLBilinear(OutputLayer):
         output = {
             'predictions': predictions,
             'scores': srl_logits_transposed,  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
-            # 'targets': srl_targets_gold_predicates,
             'probabilities': tf.nn.softmax(srl_logits_transposed, -1),  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
             'predicate_preds': predicate_preds,
             'predicate_targets': predicate_targets,
@@ -341,16 +307,6 @@ class SRLBilinear(OutputLayer):
         }
 
         return output
-
-    def keys(self):
-        return [
-            'predictions',
-            'scores',
-            'probabilities',
-            'predicate_preds',
-            'predicate_targets',
-            'gather_mask',
-        ]
 
     def loss(self, targets, output, mask):
         num_labels = self.static_params['task_vocab_size']
@@ -364,7 +320,7 @@ class SRLBilinear(OutputLayer):
         seq_lens = tf.cast(tf.reduce_sum(gather_mask, 1), tf.int32)  # [PRED_COUNT]
         srl_targets = tf.transpose(targets, [0, 2, 1])  # [BATCH_SIZE, max_pred_in_sample, SEQ_LEN]
 
-        if self.in_eval_mode:  # compute loss only on correctly predicted predicates
+        if not self.teacher_forcing:  # compute loss only on correctly predicted predicates
             correct_predicate_preds = tf.math.multiply(predicate_targets, tf.cast(predicate_preds, tf.int32))
             # correct_predicate_indices = tf.where(correct_predicate_preds)
             loss_calculation_mask = tf.gather_nd(predicate_targets, tf.where(predicate_preds))  # [PRED_COUNT]
@@ -384,18 +340,18 @@ class SRLBilinear(OutputLayer):
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(correct_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets, srl_targets_pred_indices)
 
-        # gold_predicate_counts = tf.reduce_sum(
-        #     tf.cast(self.bool_mask_where_predicates(predicate_targets, mask), tf.int32), -1)
-        # srl_targets_indices = tf.where(tf.sequence_mask(tf.reshape(gold_predicate_counts, [-1])))
-
-        if transition_params is not None and not self.in_eval_mode:
-            log_likelihood, self.static_params['transition_params'] = crf_log_likelihood(
+        if self.teacher_forcing:
+            log_likelihood, new_transition_params = crf_log_likelihood(
                 srl_logits_correct,
                 srl_targets_predicted_predicates,
                 seq_lens_correct,
                 transition_params
             )
             loss = tf.reduce_mean(-log_likelihood)
+
+            if not self.in_eval_mode:
+                self.static_params['transition_params'] = new_transition_params
+
         else:
             num_predicates = shape_list(srl_logits_transposed)[0]
             if tf.equal(num_predicates, 0):

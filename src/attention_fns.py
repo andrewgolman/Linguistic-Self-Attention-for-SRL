@@ -14,14 +14,14 @@ class CopyFromOutput(FunctionDispatcher):
         self.layer_norm = tf.keras.layers.LayerNormalization()
 
     def make_call(self, features, train_attention_to_copy, eval_attention_to_copy):
-        if self.in_eval_mode:
-            attention_to_copy = eval_attention_to_copy
-        else:
+        if self.teacher_forcing:
             attention_to_copy = tf.one_hot(
                 train_attention_to_copy, tf.shape(train_attention_to_copy)[-1],
                 on_value=constants.VERY_LARGE,
                 off_value=constants.VERY_SMALL
             )
+        else:
+            attention_to_copy = eval_attention_to_copy
 
         attention_to_copy -= tf.math.reduce_mean(attention_to_copy, axis=[1, 2], keepdims=True)
         return tf.linalg.normalize(attention_to_copy, axis=[1, 2])[0]  # todo verify
@@ -41,7 +41,7 @@ class LabelAttention(FunctionDispatcher):
         batch_size = input_shape[0]
         batch_seq_len = input_shape[1]
 
-        label_scores = train_label_scores if not self.in_eval_mode else eval_label_scores
+        label_scores = train_label_scores if self.teacher_forcing else eval_label_scores
 
         # check whether this thing is actually scores or if it's predictions, and needs
         # to be expanded out to one-hot scores. If it's actually scores, dims should be

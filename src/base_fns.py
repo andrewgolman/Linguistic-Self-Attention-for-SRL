@@ -8,14 +8,13 @@ class FunctionDispatcher(keras.layers.Layer):
     """
     def __init__(self, config, **kwargs):
         super(FunctionDispatcher, self).__init__()
-        self.in_eval_mode = False
+        self.in_eval_mode = False  # used only for output layers
+        self.teacher_forcing = False
 
         self.static_params = kwargs
         self.label_params = {}
         self.output_params = {}
         self.embedding_params = {}
-
-        # self.vocab = vocab
 
         for param_name, param_values in config['params'].items():
             # if this is a map-type param, do map lookups and pass those through
@@ -40,6 +39,12 @@ class FunctionDispatcher(keras.layers.Layer):
 
     def set_eval_mode(self):
         self.in_eval_mode = False
+
+    def enable_teacher_forcing(self):
+        self.teacher_forcing = True
+
+    def disable_teacher_forcing(self):
+        self.teacher_forcing = False
 
     def call(self, data=None, outputs=None, labels=None):
         """

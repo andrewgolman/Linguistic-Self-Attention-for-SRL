@@ -107,8 +107,8 @@ def main():
     train_batch_generator = train_utils.batch_generator(
         task_list_size, lookup_ops,
         data_config, dev_filenames,
-        num_epochs=hparams.train_epochs,
-        shuffle=True, batch_size=hparams.batch_size
+        num_epochs=1,
+        shuffle=False, batch_size=8
     )
     model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     model.load_weights(args.checkpoint)

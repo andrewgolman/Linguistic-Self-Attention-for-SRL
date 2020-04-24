@@ -42,7 +42,7 @@ class LISAModel(tf.keras.models.Model):
         self.init_layers(transition_stats)
         self.init_metrics()
         self.custom_eval = False
-        self.eval_loss_history = []
+        self.teacher_forcing = False
 
     def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
@@ -265,19 +265,31 @@ class LISAModel(tf.keras.models.Model):
             scores[(metric.task, metric.name)] = metric.result()
         return scores
 
+    def enable_teacher_forcing(self):
+        self.teacher_forcing = True
+        for l in self.transformer_layers:
+            l.enable_teacher_forcing()
+        for l in self.output_layers.values():
+            l.enable_teacher_forcing()
+
+    def disable_teacher_forcing(self):
+        for l in self.transformer_layers:
+            l.disable_teacher_forcing()
+        for l in self.output_layers.values():
+            l.disable_teacher_forcing()
+        self.teacher_forcing = False
+
     def start_custom_eval(self):
         self.custom_eval = True
-        self.eval_loss_history = []
+        self.disable_teacher_forcing()
         for f in self.output_layers.values():
             f.in_eval_mode = True
-        for l in self.transformer_layers:
-            l.start_custom_eval()
         for metric in self.custom_metrics:
             metric.reset_states()
 
-    def end_custom_eval(self):
+    def end_custom_eval(self, enable_teacher_forcing=True):
         for f in self.output_layers.values():
             f.in_eval_mode = False
-        for l in self.transformer_layers:
-            l.end_custom_eval()
+        if enable_teacher_forcing:
+            self.enable_teacher_forcing()
         self.custom_eval = False

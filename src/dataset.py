@@ -57,7 +57,7 @@ def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_e
 
   with tf.device('/cpu:0'):
     dataset = create_dataset(data_filenames, data_config, vocab_lookup_ops)
-    # dataset = dataset.cache()  # todo AG
+    dataset = dataset.cache()  # todo AG
 
     # do batching
     dataset = dataset.apply(tf.data.experimental.bucket_by_sequence_length(element_length_func=lambda d: tf.shape(d)[0],

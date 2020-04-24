@@ -189,14 +189,14 @@ class TransformerLayer(keras.layers.Layer):
         features = self.sa_layer(features, mask=mask, specials=(special_attn, special_values))
         return features
 
-    def start_custom_eval(self):
+    def enable_teacher_forcing(self):
         for f in self.attention_fns:
-            f.in_eval_mode = True
+            f.enable_teacher_forcing()
         for f in self.value_fns:
-            f.in_eval_mode = True
+            f.enable_teacher_forcing()
 
-    def end_custom_eval(self):
+    def disable_teacher_forcing(self):
         for f in self.attention_fns:
-            f.in_eval_mode = False
+            f.disable_teacher_forcing()
         for f in self.value_fns:
-            f.in_eval_mode = False
+            f.disable_teacher_forcing()
