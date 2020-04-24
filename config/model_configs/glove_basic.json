@@ -24,14 +24,14 @@
 
    "train_epochs": 1000,
    "steps_per_epoch": 600,
-   "batch_size": 256
+   "batch_size": 128
 
  },
  "layers": {
    "type": "transformer",
    "num_heads": 8,
    "head_dim": 32,
-   "ff_hidden_size": 1000
+   "ff_hidden_size": 800
  },
  "embeddings": {
    "word_type": {
