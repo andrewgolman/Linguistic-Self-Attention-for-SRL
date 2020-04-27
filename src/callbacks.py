@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tqdm import tqdm
+import os
 
 
 def print_model_metrics(metrics, file=None):
@@ -22,6 +23,9 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
         self.enable_teacher_forcing = not teacher_forcing_on_train
         self.log_file = log_file
 
+        with open(self.log_file, "w") as fout:
+            pass
+
     def on_epoch_end(self, epoch, logs={}):
         self.model.start_custom_eval()
         for batch in tqdm(self.ds.as_numpy_iterator()):
@@ -39,11 +43,12 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
 
 class SaveCallBack(tf.keras.callbacks.Callback):
     def __init__(self, path, save_every=1):
-        self.path = path
+        os.mkdir("{}/checkpoints".format(path))
+        self.path = "{}/checkpoints/".format(path)
         self.save_every = save_every
 
     def on_epoch_end(self, epoch, logs={}):
-        save_path = "{}/checkpoint_epoch_{}".format(self.path, epoch + 1)
         if (epoch + 1) % self.save_every == 0:
+            save_path = "{}/epoch_{}".format(self.path, epoch + 1)
             print("Epoch {}, saving model into {}".format(epoch + 1, save_path))
             self.model.save_weights(save_path, save_format='tf')
