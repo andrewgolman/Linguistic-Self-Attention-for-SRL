@@ -45,8 +45,9 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
 
 class SaveCallBack(tf.keras.callbacks.Callback):
     def __init__(self, path, save_every=1):
-        os.mkdir("{}/checkpoints".format(path))
         self.path = "{}/checkpoints/".format(path)
+        if not os.path.exists(self.path):
+            os.mkdir(self.path)
         self.save_every = save_every
 
     def on_epoch_end(self, epoch, logs={}):
