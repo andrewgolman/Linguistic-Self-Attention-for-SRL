@@ -17,28 +17,30 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     On every epoch end: sets evaluation mode, passes validation data, prints metrics
     TODO: do it in within graph, currently eval_fns_np fails due to tf2.x data format
     """
-    def __init__(self, dataset, log_file, teacher_forcing_on_train=False):
+    def __init__(self, dataset, log_file, teacher_forcing_on_train=False, eval_every=1):
         super(EvalMetricsCallBack, self).__init__()
         self.ds = dataset
         self.enable_teacher_forcing = not teacher_forcing_on_train
         self.log_file = log_file
+        self.eval_every = eval_every
 
         with open(self.log_file, "w") as fout:
             pass
 
     def on_epoch_end(self, epoch, logs={}):
-        self.model.start_custom_eval()
-        for batch in tqdm(self.ds.as_numpy_iterator()):
-            self.model(batch)
-            # self.model.predict(batch)
+        if (epoch + 1) % self.eval_every == 0:
+            self.model.start_custom_eval()
+            for batch in tqdm(self.ds.as_numpy_iterator()):
+                self.model(batch)
+                # self.model.predict(batch)
 
-        metrics = self.model.get_metrics()
-        print("=" * 20)
-        print("EPOCH:", epoch + 1)
-        print_model_metrics(metrics)
-        with open(self.log_file, "a") as fout:
-            print_model_metrics(metrics, fout)
-        self.model.end_custom_eval(enable_teacher_forcing=self.enable_teacher_forcing)
+            metrics = self.model.get_metrics()
+            print("=" * 20)
+            print("EPOCH:", epoch + 1)
+            print_model_metrics(metrics)
+            with open(self.log_file, "a") as fout:
+                print_model_metrics(metrics, fout)
+            self.model.end_custom_eval(enable_teacher_forcing=self.enable_teacher_forcing)
 
 
 class SaveCallBack(tf.keras.callbacks.Callback):

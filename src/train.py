@@ -141,7 +141,7 @@ def main():
     model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
-    eval_callback = callbacks.EvalMetricsCallBack(val_dataset, args.save_dir + "/training_log.txt")
+    eval_callback = callbacks.EvalMetricsCallBack(val_dataset, args.save_dir + "/training_log.txt", eval_every=20)
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=4)
 
     model.fit(
