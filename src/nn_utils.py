@@ -1,6 +1,5 @@
 import tensorflow as tf
 import numpy as np
-import tensorflow.keras.backend as K
 import tensorflow.keras.layers as L
 from opennmt.utils.misc import shape_list
 
@@ -43,16 +42,15 @@ class Bilinear(L.Layer):
             left_bias_shape[-1] = 1
             right_bias_shape = shape_list(right)
             right_bias_shape[-1] = 1
-            left = K.concatenate([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=-1)
-            right = K.concatenate([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=-1)
+            left = tf.concat([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=2)
+            right = tf.concat([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=2)
 
         lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
         lin_shape = shape_list(lin)
-        lin = K.reshape(lin, [-1, lin_shape[1] * self.output_size, lin_shape[2] // self.output_size])
-        right = tf.transpose(right, [0, 2, 1])
-        bilin = tf.matmul(lin, right)
+        lin = tf.reshape(lin, [-1, lin_shape[1] * self.output_size, lin_shape[2] // self.output_size])
+        bilin = tf.matmul(lin, right, transpose_b=True)
         bilin_shape = shape_list(bilin)
-        bilin = K.reshape(bilin, [bilin_shape[0], bilin_shape[1] // self.output_size, self.output_size, bilin_shape[-1]])
+        bilin = tf.reshape(bilin, [bilin_shape[0], bilin_shape[1] // self.output_size, self.output_size, bilin_shape[-1]])
         return bilin
 
 
