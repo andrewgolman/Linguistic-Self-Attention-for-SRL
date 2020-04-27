@@ -24,7 +24,8 @@
 
    "train_epochs": 1000,
    "steps_per_epoch": 600,
-   "batch_size": 128
+   "batch_size": 128,
+   "validation_batch_size": 128
 
  },
  "layers": {

@@ -122,7 +122,10 @@ def main():
         num_epochs=hparams.train_epochs,
         shuffle=True, batch_size=hparams.batch_size
     )
-    val_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=256, num_epochs=1, shuffle=False)
+    val_dataset = dataset.get_dataset(
+        dev_filenames, data_config, lookup_ops,
+        batch_size=hparams.validation_batch_size, num_epochs=1, shuffle=False
+    )
 
     batch = next(train_batch_generator)
     model(batch[0])
