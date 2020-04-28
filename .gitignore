@@ -1,0 +1,9 @@
+.idea
+__pycache__
+src/test
+model
+embeddings
+*.ipynb
+*.DS_Store
+tmp
+*.conf
