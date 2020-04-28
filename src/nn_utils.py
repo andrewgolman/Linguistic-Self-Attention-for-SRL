@@ -9,11 +9,6 @@ def int_to_str_lookup_table(inputs, lookup_map):
   return tf.nn.embedding_lookup(np.array(list(lookup_map.values())), inputs)
 
 
-def set_vars_to_moving_average(moving_averager):
-  moving_avg_variables = tf.get_collection(tf.GraphKeys.MOVING_AVERAGE_VARIABLES)
-  return tf.group(*[tf.assign(x, moving_averager.average(x)) for x in moving_avg_variables])
-
-
 # similar to https://github.com/keras-team/keras/blob/master/keras/layers/core.py#L796
 class Bilinear(L.Layer):
     def __init__(self, output_size, add_bias=True):
@@ -25,13 +20,14 @@ class Bilinear(L.Layer):
     def build(self, input_shape):
         # todo AG check
         self.matrix_shape = input_shape[0][-1] + self.add_bias
-        self.kernel = self.add_weight(
-            name='kernel',
-            # inputs1_size + add_bias1, output_size, inputs2_size + add_bias2
-            shape=(self.matrix_shape, self.output_size, self.matrix_shape),
-            initializer='glorot_uniform',
-            trainable=True
-        )
+        self.left_dense = L.Dense(self.output_size * self.matrix_shape)
+        # # inputs1_size + add_bias1, output_size, inputs2_size + add_bias2
+        # self.kernel = self.add_weight(
+        #     name='kernel',
+            # shape=(self.matrix_shape, self.output_size, self.matrix_shape),
+            # initializer='glorot_uniform',
+            # trainable=True
+        # )
         super(Bilinear, self).build(input_shape)
 
     def call(self, data):
@@ -45,7 +41,8 @@ class Bilinear(L.Layer):
             left = tf.concat([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=2)
             right = tf.concat([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=2)
 
-        lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
+        # lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
+        lin = self.left_dense(left)
         lin_shape = shape_list(lin)
         lin = tf.reshape(lin, [-1, lin_shape[1] * self.output_size, lin_shape[2] // self.output_size])
         bilin = tf.matmul(lin, right, transpose_b=True)
@@ -71,7 +68,6 @@ class BilinearClassifier(L.Layer):
 
 class ConditionalBilinearClassifier(L.Layer):
     def __init__(self, n_outputs, dropout, left_input_size, right_input_size):
-        #     noise_shape = tf.stack([batch_size, 1, input_size])
         super(ConditionalBilinearClassifier, self).__init__()
         self.left_dropout = L.Dropout(dropout, noise_shape=[None, 1, left_input_size])
         self.right_dropout = L.Dropout(dropout, noise_shape=[None, 1, right_input_size])
