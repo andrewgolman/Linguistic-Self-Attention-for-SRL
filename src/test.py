@@ -17,12 +17,12 @@ from callbacks import print_model_metrics
 
 
 arg_parser = argparse.ArgumentParser(description='')
-arg_parser.add_argument('--test_files', required=True,
-                        help='Comma-separated list of test data files')
 arg_parser.add_argument('--train_files', required=True,
                         help='Comma-separated list of training data files')
 arg_parser.add_argument('--dev_files', required=True,
                         help='Comma-separated list of development data files')
+arg_parser.add_argument('--test_files', required=True,
+                        help='Comma-separated list of test data files')
 arg_parser.add_argument('--save_dir', required=True,
                         help='Directory to save models, outputs, etc.')
 arg_parser.add_argument('--checkpoint', required=True,
@@ -77,6 +77,8 @@ def main():
 
     vocab = Vocab(data_config, args.save_dir, train_filenames)
     vocab.update_vocab_files(dev_filenames)
+    # todo AG we might want to handle vocabs differently
+    vocab.update_vocab_files(test_filenames)
 
     embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
                        if 'pretrained_embeddings' in embeddings_map]
@@ -97,8 +99,8 @@ def main():
 
     lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
 
-    test_dataset = dataset.get_dataset(test_filenames, data_config, lookup_ops, batch_size=256, num_epochs=1, shuffle=False)
-    dev_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=256, num_epochs=1, shuffle=False)
+    test_dataset = dataset.get_dataset(test_filenames, data_config, lookup_ops, batch_size=128, num_epochs=1, shuffle=False)
+    dev_dataset = dataset.get_dataset(dev_filenames, data_config, lookup_ops, batch_size=128, num_epochs=1, shuffle=False)
 
     model = LISAModel(hparams, model_config, layer_task_config, layer_attention_config, feature_idx_map,
                       label_idx_map, vocab)
@@ -110,6 +112,7 @@ def main():
         num_epochs=1,
         shuffle=False, batch_size=8
     )
+    model.end_custom_eval()
     model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     model.load_weights(args.checkpoint)
 
@@ -118,14 +121,16 @@ def main():
         model(batch)
 
     print("TEST DATASET:")
-    print_model_metrics(model)
+    metrics = model.get_metrics()
+    print_model_metrics(metrics)
 
     model.start_custom_eval()
     for batch in tqdm(dev_dataset.as_numpy_iterator()):
         model(batch)
 
     print("DEV DATASET:")
-    print_model_metrics(model)
+    metrics = model.get_metrics()
+    print_model_metrics(metrics)
 
 
 if __name__ == "__main__":
