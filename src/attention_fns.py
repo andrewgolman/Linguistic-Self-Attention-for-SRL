@@ -23,10 +23,7 @@ class CopyFromOutput(FunctionDispatcher):
         else:
             attention_to_copy = eval_attention_to_copy
 
-        attention_to_copy -= tf.math.reduce_mean(attention_to_copy, axis=[1, 2], keepdims=True)
-        return tf.linalg.normalize(attention_to_copy, axis=[1, 2])[0]  # todo verify
-
-        # tf.stop_gradient(eval_attention_to_copy)
+        return attention_to_copy
 
 
 class LabelAttention(FunctionDispatcher):

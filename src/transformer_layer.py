@@ -70,15 +70,14 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
             mask = tf.expand_dims(mask, 1)  # Broadcast on head dimension.
             dot = tf.cast(tf.cast(dot, tf.float32) * mask + ((1.0 - mask) * tf.float32.min), dot.dtype)
 
-        attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
         # Replace last heads with special heads. todo AG optimize
         if len(special_attn) > 0:
-            unstacked_attn = tf.unstack(attn, axis=1)  # [BATCH_SIZE, HEADS, SEQ_LEN, SEQ_LEN]
+            unstacked_attn = tf.unstack(dot, axis=1)  # [BATCH_SIZE, HEADS, SEQ_LEN, SEQ_LEN]
             for i, t in enumerate(special_attn):
                 unstacked_attn[-i] = t
         #         tf.stop_gradient(unstacked_attn[-i])
-            attn = tf.stack(unstacked_attn, axis=1)
+            dot = tf.stack(unstacked_attn, axis=1)
 
         if len(special_values) > 0:
             unstacked_values = tf.unstack(values, axis=1)
@@ -86,6 +85,8 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
                 unstacked_values[-i] = t
         #         tf.stop_gradient(unstacked_attn[-i])
             values = tf.stack(unstacked_values, axis=1)
+
+        attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
 
         drop_attn = onmt_transformer.common.dropout(attn, self.dropout, training=training)
         heads = tf.matmul(drop_attn, values)

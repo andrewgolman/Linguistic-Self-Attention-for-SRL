@@ -125,7 +125,7 @@ def main():
 
     val_datasets = [
         dataset.get_dataset(
-            filename, data_config, lookup_ops,
+            [filename], data_config, lookup_ops,
             batch_size=hparams.validation_batch_size, num_epochs=1, shuffle=False
         ) for filename in dev_filenames
     ]
@@ -145,8 +145,8 @@ def main():
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
     eval_callbacks = [
-        callbacks.EvalMetricsCallBack(val_dataset, "{}/metrics_log_{}.txt".format(args.save_dir, filename), eval_every=10)
-        for val_dataset, filename in zip(val_datasets, dev_filenames)
+        callbacks.EvalMetricsCallBack(val_dataset, "{}/metrics_log_{}.txt".format(args.save_dir, i), eval_every=5)
+        for i, val_dataset in enumerate(val_datasets)
     ]
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10)
 
