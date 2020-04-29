@@ -5,10 +5,10 @@
       "pretrained_embeddings": "embeddings/glove.6B.100d.txt"
     },
     "gold_pos": {
-      "embedding_dim": 32
+      "embedding_dim": 24
     },
     "parse_label": {
-      "embedding_dim": 32
+      "embedding_dim": 24
     }
   }
 }

@@ -23,16 +23,16 @@
    "use_nesterov": true,
 
    "train_epochs": 1000,
-   "steps_per_epoch": 1500,
-   "batch_size": 128,
-   "validation_batch_size": 256
+   "steps_per_epoch": 400,
+   "batch_size": 64,
+   "validation_batch_size": 128
 
  },
  "layers": {
    "type": "transformer",
    "num_heads": 8,
-   "head_dim": 32,
-   "ff_hidden_size": 800
+   "head_dim": 24,
+   "ff_hidden_size": 200
  },
  "embeddings": {
    "word_type": {
