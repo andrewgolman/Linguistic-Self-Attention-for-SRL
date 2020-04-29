@@ -1,4 +1,5 @@
 import constants
+import preprocessor_maps
 
 
 def lowercase_converter(split_line, idx):
@@ -45,6 +46,15 @@ def idx_list_converter(split_line, idx):
   return [split_line[i] for i in idx]
 
 
+def albert_tokenizer(split_line, idx):
+    tokenizer = preprocessor_maps.albert_tokenizer
+    w = split_line[idx]
+    tokens = tokenizer.encode(w, add_special_tokens=False)
+    # if len(tokens) > 1 and tokens[0] == 13:  # todo handle various cases, e.g. punctuation
+    #     return tokens[1]
+    return [str(tokens[0])]
+
+
 dispatcher = {
   'parse_roots_self_loop': parse_roots_self_loop_converter,
   'strip_conll12_domain': strip_conll12_domain_converter,
@@ -55,7 +65,8 @@ dispatcher = {
   'joint_converter': joint_converter,
   'idx_range_converter': idx_range_converter,
   'idx_list_converter': idx_list_converter,
-  'default_converter': idx_list_converter
+  'default_converter': idx_list_converter,
+  'albert_tokenizer': albert_tokenizer,
 }
 
 

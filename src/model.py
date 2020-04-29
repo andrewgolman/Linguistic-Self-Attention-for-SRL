@@ -177,14 +177,15 @@ class LISAModel(tf.keras.models.Model):
                 these_labels_masked = tf.squeeze(these_labels_masked, -1)
             labels[l] = these_labels_masked
 
+        return features, mask, labels, tokens
+
+    def preprocess_features(self, features):
         # Set up model inputs
         features = [
             tf.nn.embedding_lookup(self.embeddings[input_name], features[input_name])
             for input_name in self.model_config['inputs']  # word type and/or predicate
         ]
         features = tf.concat(features, axis=2)
-
-        return features, mask, labels, tokens
 
     def outputs_to_predictions(self, outputs):
         return [
@@ -201,6 +202,7 @@ class LISAModel(tf.keras.models.Model):
         :return: predictions
         """
         features, mask, labels, tokens = self.preprocess_batch(batch)
+        features = self.preprocess_features(features)
 
         outputs = {
             'mask': mask,  # loss needs it

@@ -1,8 +1,7 @@
 import data_converters
-from typing import List, Tuple, Generator
 
 
-def conll_data_generator(filenames, data_config):  # -> Generator[List[Tuple]]:
+def conll_data_generator(filenames, data_config):
   """
   AG: Yields sentences as lists of words with features
   """
@@ -19,14 +18,13 @@ def conll_data_generator(filenames, data_config):  # -> Generator[List[Tuple]]:
           data_vals = []
           for d in data_config.keys():
             # only return the data that we're actually going to use as inputs or outputs
-            if ('feature' in data_config[d] and data_config[d]['feature']) or \
-               ('label' in data_config[d] and data_config[d]['label']):
+            if data_config[d].get('feature') or data_config[d].get('label'):
               datum_idx = data_config[d]['conll_idx']
               converter_name = data_config[d]['converter']['name'] if 'converter' in data_config[d] else 'default_converter'
               converter_params = data_converters.get_params(data_config[d], split_line, datum_idx)
               data = data_converters.dispatch(converter_name)(**converter_params)
               data_vals.extend(data)
-          # print(tuple(data_vals))
+
           buf.append(tuple(data_vals))
         else:
           if buf:
