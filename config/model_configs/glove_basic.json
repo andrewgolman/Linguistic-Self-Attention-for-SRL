@@ -23,9 +23,9 @@
    "use_nesterov": true,
 
    "train_epochs": 1000,
-   "steps_per_epoch": 1000,
+   "steps_per_epoch": 1500,
    "batch_size": 128,
-   "validation_batch_size": 128
+   "validation_batch_size": 256
 
  },
  "layers": {
