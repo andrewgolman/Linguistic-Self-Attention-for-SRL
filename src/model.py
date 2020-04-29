@@ -7,8 +7,12 @@ import util
 import transformer_layer
 import attention_fns
 import constants
+import preprocessor_maps
 from opennmt.layers.position import SinusoidalPositionEncoder
 # https://github.com/OpenNMT/OpenNMT-tf/blob/2c1d81ccd00ff6abd886c180ff81e9821e0fd572/opennmt/layers/position.py#L85
+
+
+_MAIN_INPUT = 'word_type'
 
 
 class LISAModel(tf.keras.models.Model):
@@ -49,6 +53,10 @@ class LISAModel(tf.keras.models.Model):
         self.layer_norm = L.LayerNormalization()  # epsilon=1e-6
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.hparams['sa_hidden_size'] = sa_hidden_size
+
+        if self.model_config['first_layer'] != 'embeddings':
+            self.first_layer_model = preprocessor_maps.load_model(self.model_config['first_layer'])
+
         self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
         self.positional_encoder = SinusoidalPositionEncoder()
 
@@ -151,7 +159,7 @@ class LISAModel(tf.keras.models.Model):
         features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
 
         # ES todo this assumes that word_type is always passed in
-        words = features['word_type']
+        words = features[_MAIN_INPUT]
 
         # for masking out padding tokens
         mask = tf.where(tf.equal(words, constants.PAD_VALUE), tf.zeros([batch_size, batch_seq_len]),
@@ -179,13 +187,21 @@ class LISAModel(tf.keras.models.Model):
 
         return features, mask, labels, tokens
 
-    def preprocess_features(self, features):
+    def preprocess_features(self, inputs):
         # Set up model inputs
-        features = [
-            tf.nn.embedding_lookup(self.embeddings[input_name], features[input_name])
-            for input_name in self.model_config['inputs']  # word type and/or predicate
-        ]
-        features = tf.concat(features, axis=2)
+        features = []
+        for input_name in self.model_config['inputs']:  # word type and/or predicate
+            if input_name == _MAIN_INPUT and self.model_config['first_layer'] != 'embeddings':
+                features.append(
+                    self.first_layer_model(inputs[input_name])[0]
+                )
+            else:
+                features.append(
+                    tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])
+                )
+
+
+        return tf.concat(features, axis=2)
 
     def outputs_to_predictions(self, outputs):
         return [
@@ -201,8 +217,9 @@ class LISAModel(tf.keras.models.Model):
             tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
         :return: predictions
         """
-        features, mask, labels, tokens = self.preprocess_batch(batch)
-        features = self.preprocess_features(features)
+        inputs, mask, labels, tokens = self.preprocess_batch(batch)
+        features = self.preprocess_features(inputs)
+        tf.stop_gradient(features)
 
         outputs = {
             'mask': mask,  # loss needs it
