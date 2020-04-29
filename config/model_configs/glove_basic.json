@@ -1,4 +1,5 @@
 {
+ "first_layer": "embeddings",
  "predicate_mlp_size": 200,
  "role_mlp_size": 200,
  "predicate_pred_mlp_size": 200,
