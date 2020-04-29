@@ -32,7 +32,7 @@
    "type": "transformer",
    "num_heads": 8,
    "head_dim": 24,
-   "ff_hidden_size": 200
+   "ff_hidden_size": 800
  },
  "embeddings": {
    "word_type": {
