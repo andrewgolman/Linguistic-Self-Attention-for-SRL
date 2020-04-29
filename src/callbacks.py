@@ -35,10 +35,10 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
                 # self.model.predict(batch)
 
             metrics = self.model.get_metrics()
-            print("=" * 20)
-            print("EPOCH:", epoch + 1)
             print_model_metrics(metrics)
             with open(self.log_file, "a") as fout:
+                print("=" * 20, file=fout)
+                print("EPOCH:", epoch + 1, file=fout)
                 print_model_metrics(metrics, fout)
             self.model.end_custom_eval(enable_teacher_forcing=self.enable_teacher_forcing)
 

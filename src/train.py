@@ -118,14 +118,17 @@ def main():
     lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
     train_batch_generator = train_utils.batch_generator(
         task_list_size, lookup_ops,
-        data_config, dev_filenames,
+        data_config, train_filenames,
         num_epochs=hparams.train_epochs,
         shuffle=True, batch_size=hparams.batch_size
     )
-    val_dataset = dataset.get_dataset(
-        dev_filenames, data_config, lookup_ops,
-        batch_size=hparams.validation_batch_size, num_epochs=1, shuffle=False
-    )
+
+    val_datasets = [
+        dataset.get_dataset(
+            filename, data_config, lookup_ops,
+            batch_size=hparams.validation_batch_size, num_epochs=1, shuffle=False
+        ) for filename in dev_filenames
+    ]
 
     batch = next(train_batch_generator)
     model(batch[0])
@@ -141,14 +144,17 @@ def main():
     model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
-    eval_callback = callbacks.EvalMetricsCallBack(val_dataset, args.save_dir + "/training_log.txt", eval_every=10)
+    eval_callbacks = [
+        callbacks.EvalMetricsCallBack(val_dataset, "{}/metrics_log_{}.txt".format(args.save_dir, filename), eval_every=10)
+        for val_dataset, filename in zip(val_datasets, dev_filenames)
+    ]
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10)
 
     model.fit(
         train_batch_generator,
         epochs=hparams.train_epochs,
         steps_per_epoch=hparams.steps_per_epoch,
-        callbacks=[eval_callback, lr_schedule_callback, save_callback],
+        callbacks=[*eval_callbacks, lr_schedule_callback, save_callback],
     )
 
 
