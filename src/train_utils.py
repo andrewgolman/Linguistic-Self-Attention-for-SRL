@@ -116,11 +116,14 @@ def learning_rate(hparams, global_step):
             return lr
 
 
-def learning_rate_scheduler(hparams):
+def learning_rate_scheduler(hparams, start_epoch=None):
     steps_per_epoch = hparams.steps_per_epoch
 
+    if start_epoch is None:
+        start_epoch = 0
+
     def callback(epoch):
-        return learning_rate(hparams, epoch * steps_per_epoch).numpy()
+        return learning_rate(hparams, (epoch + start_epoch) * steps_per_epoch).numpy()
 
     return callback
 

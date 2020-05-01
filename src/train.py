@@ -41,12 +41,12 @@ arg_parser.add_argument('--layer_configs', required=True,
                         help='Comma-separated list of paths to layer configuration json.')
 arg_parser.add_argument('--attention_configs',
                         help='Comma-separated list of paths to attention configuration json.')
-arg_parser.add_argument('--num_gpus', type=int,
-                        help='Number of GPUs for distributed training.')
-arg_parser.add_argument('--keep_k_best_models', type=int,
-                        help='Number of best models to keep.')
 arg_parser.add_argument('--best_eval_key', required=True, type=str,
                         help='Key corresponding to the evaluation to be used for determining early stopping.')
+arg_parser.add_argument('--checkpoint', required=False, type=str,
+                        help='Start with weights from checkpoint')
+arg_parser.add_argument('--disable_teacher_forcing', action="store_true",
+                        help='disable_teacher_forcing')
 
 arg_parser.set_defaults(debug=False, num_gpus=1, keep_k_best_models=1)
 
@@ -136,14 +136,19 @@ def main():
     model(batch[0])
     model.end_custom_eval()
 
-    model.fit(
-        train_batch_generator,
-        epochs=1,
-        steps_per_epoch=1,
-    )
+    model.fit(train_batch_generator, epochs=1,steps_per_epoch=1)
+    if args.checkpoint:
+        # todo AG
+        start_epoch = int(args.checkpoint.split("_")[-1])
+        logging.log(logging.INFO, "Loading model weights from checkpoint {}".format(args.checkpoint))
+        model.load_weights(args.checkpoint)
+    else:
+        start_epoch = None
     model.summary()
 
-    lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(train_utils.learning_rate_scheduler(hparams))
+    lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(
+        train_utils.learning_rate_scheduler(hparams, start_epoch=start_epoch),
+    )
     eval_callbacks = [
         callbacks.EvalMetricsCallBack(val_dataset, "{}/metrics_log_{}.txt".format(args.save_dir, i), eval_every=5)
         for i, val_dataset in enumerate(val_datasets)
