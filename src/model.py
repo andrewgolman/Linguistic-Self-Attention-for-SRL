@@ -50,7 +50,7 @@ class LISAModel(tf.keras.models.Model):
 
     def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
-        self.layer_norm = L.LayerNormalization()  # epsilon=1e-6
+        self.layer_norms = [L.LayerNormalization() for _ in range(self.num_layers)]  # epsilon=1e-6
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.hparams['sa_hidden_size'] = sa_hidden_size
 
@@ -236,7 +236,7 @@ class LISAModel(tf.keras.models.Model):
             # if normalization is done in layer_preprocess, then it should also be done
             # on the output, since the output can grow very large, being the sum of
             # a whole stack of unnormalized layer outputs.
-            predict_features = self.layer_norm(features)
+            predict_features = self.layer_norms[i](features)
 
             for task, layer in self.output_layers.items():
                 if layer.transformer_layer_id == i:
