@@ -65,3 +65,6 @@ This might be used on the late stages of training
 - fit with in transformer config
 - evaluate within the graph
 - preprocess Russian dataset
+
+#### Notes:
+- long sentences are also deleted from training dataset to save some gpu memory...

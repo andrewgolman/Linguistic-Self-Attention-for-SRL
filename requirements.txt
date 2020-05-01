@@ -4,3 +4,4 @@ numpy
 opennmt-tf
 tensorflow-addons
 tqdm
+transformers
