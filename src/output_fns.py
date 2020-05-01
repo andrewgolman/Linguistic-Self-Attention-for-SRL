@@ -218,11 +218,17 @@ class SRLBilinear(OutputLayer):
         self.dense1 = L.Dense(self.predicate_mlp_size + self.role_mlp_size,
                               activation=L.LeakyReLU(alpha=0.1))
 
+        self.dropout2 = L.Dropout(1 - self.hparams.mlp_dropout)
+        self.dense_left = L.Dense(50, activation='tanh')  # !
+        self.dense_right = L.Dense(50, activation='tanh')  # !
+
         self.bilinear = nn_utils.BilinearClassifier(
             self.static_params['task_vocab_size'],
             1 - self.hparams.bilinear_dropout,
-            left_input_size=self.predicate_mlp_size,
-            right_input_size=self.role_mlp_size,
+            # left_input_size=self.predicate_mlp_size,
+            # right_input_size=self.role_mlp_size,
+            left_input_size=50,
+            right_input_size=50,
         )
 
         self.eval_loss = tf.keras.losses.CategoricalCrossentropy(
@@ -276,6 +282,10 @@ class SRLBilinear(OutputLayer):
                                  [batch_size, batch_seq_len, batch_seq_len, self.role_mlp_size])
         gathered_roles = tf.gather_nd(tiled_roles, predicate_gather_indices)  # [PRED_COUNT, SEQ_LEN, HID]
 
+        gathered_roles = self.dropout2(gathered_roles)
+        gathered_predicates = self.dropout2(gathered_predicates)
+        gathered_predicates = self.dense_left(gathered_predicates)  # !
+        gathered_roles = self.dense_right(gathered_roles)
         # now multiply them together to get (num_predicates_in_batch x batch_seq_len x num_srl_classes) tensor of scores
         srl_logits = self.bilinear([gathered_predicates, gathered_roles])  # [PRED_COUNT, bilin_output_size, SEQ_LEN]
         logits_shape = shape_list(srl_logits)
