@@ -1,7 +1,6 @@
 import tensorflow as tf
 import constants
 from data_generator import conll_data_generator
-import preprocessor_maps
 
 
 def get_field_mapper(vocab_lookup_ops, data_config, feature_label_names):
@@ -40,7 +39,6 @@ def get_field_mapper(vocab_lookup_ops, data_config, feature_label_names):
                 mapped.append(tf.expand_dims(tf.strings.to_number(row[:, i], out_type=tf.int64), -1))
 
         # this is where the order of features/labels in input gets defined
-        # can i have these come out of the lookup as int32?
         return tf.cast(tf.concat(mapped, axis=-1), tf.int32)
 
     return _mapper
@@ -49,9 +47,7 @@ def get_field_mapper(vocab_lookup_ops, data_config, feature_label_names):
 def create_dataset(data_filenames, data_config, vocab_lookup_ops):
     # get the names of data fields in data_config that correspond to features or labels,
     # and thus that we want to load into batches
-    feature_label_names = [d for d in data_config.keys() if \
-                           ('feature' in data_config[d] and data_config[d]['feature']) or
-                           ('label' in data_config[d] and data_config[d]['label'])]
+    feature_label_names = [d for d in data_config.keys() if data_config[d].get('feature') or data_config[d].get('label')]
 
     # get the dataset
     dataset = tf.data.Dataset.from_generator(lambda: conll_data_generator(data_filenames, data_config),
@@ -69,8 +65,6 @@ def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_e
   bucket_boundaries = constants.DEFAULT_BUCKET_BOUNDARIES
   bucket_batch_sizes = [batch_size] * (len(bucket_boundaries) + 1)
 
-  # todo do something smarter with multiple files + parallel?
-
   with tf.device('/cpu:0'):
     dataset = create_dataset(data_filenames, data_config, vocab_lookup_ops)
     dataset = dataset.cache()  # todo AG
@@ -87,7 +81,6 @@ def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_e
       dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=batch_size*shuffle_buffer_multiplier,
                                                                  count=num_epochs))
 
-    # todo should the buffer be bigger?
-    dataset.prefetch(buffer_size=1)
+    dataset.prefetch(buffer_size=256)
 
     return dataset
