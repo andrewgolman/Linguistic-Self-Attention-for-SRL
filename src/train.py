@@ -48,7 +48,7 @@ arg_parser.add_argument('--checkpoint', required=False, type=str,
 arg_parser.add_argument('--disable_teacher_forcing', action="store_true",
                         help='disable_teacher_forcing')
 
-arg_parser.set_defaults(debug=False, num_gpus=1, keep_k_best_models=1)
+arg_parser.set_defaults(debug=False)
 
 args, leftovers = arg_parser.parse_known_args()
 
@@ -134,7 +134,8 @@ def main():
     model(batch[0])
     model.start_custom_eval()
     model(batch[0])
-    model.end_custom_eval()
+    # do not remove this line, it sets teacher forcing
+    model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
 
     model.fit(train_batch_generator, epochs=1,steps_per_epoch=1)
     if args.checkpoint:
@@ -144,13 +145,19 @@ def main():
         model.load_weights(args.checkpoint)
     else:
         start_epoch = None
+
     model.summary()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(
         train_utils.learning_rate_scheduler(hparams, start_epoch=start_epoch),
     )
     eval_callbacks = [
-        callbacks.EvalMetricsCallBack(val_dataset, "{}/metrics_log_{}.txt".format(args.save_dir, i), eval_every=5)
+        callbacks.EvalMetricsCallBack(
+            val_dataset,
+            "{}/metrics_log_{}.txt".format(args.save_dir, i),
+            eval_every=5,
+            teacher_forcing_on_train=(args.disable_teacher_forcing)
+        )
         for i, val_dataset in enumerate(val_datasets)
     ]
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10)
