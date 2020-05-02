@@ -131,13 +131,13 @@ def main():
     ]
 
     batch = next(train_batch_generator)
-    model(batch[0])
     model.start_custom_eval()
     model(batch[0])
     # do not remove this line, it sets teacher forcing
     model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
+    model(batch[0])
 
-    model.fit(train_batch_generator, epochs=1,steps_per_epoch=1)
+    model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     if args.checkpoint:
         # todo AG
         start_epoch = int(args.checkpoint.split("_")[-1])
@@ -155,8 +155,8 @@ def main():
         callbacks.EvalMetricsCallBack(
             val_dataset,
             "{}/metrics_log_{}.txt".format(args.save_dir, i),
-            eval_every=5,
-            teacher_forcing_on_train=(args.disable_teacher_forcing)
+            eval_every=10,
+            enable_teacher_forcing=(not args.disable_teacher_forcing)
         )
         for i, val_dataset in enumerate(val_datasets)
     ]
