@@ -27,11 +27,6 @@ class LISAModel(tf.keras.models.Model):
         self.attention_config = util.NotTrackableDict(attention_config)
         self.feature_idx_map = util.NotTrackableDict(feature_idx_map)
         self.label_idx_map = util.NotTrackableDict(label_idx_map)
-        # self.model_config = model_config
-        # self.task_config = task_config
-        # self.attention_config = attention_config
-        # self.feature_idx_map = feature_idx_map
-        # self.label_idx_map = label_idx_map
         self.vocab = vocab
         self.layer_config = self.model_config['layers']
 
@@ -50,7 +45,7 @@ class LISAModel(tf.keras.models.Model):
 
     def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
-        self.layer_norms = [L.LayerNormalization() for _ in range(self.num_layers)]  # epsilon=1e-6
+        self.layer_norms = [L.LayerNormalization() for _ in range(self.num_layers)]
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.hparams['sa_hidden_size'] = sa_hidden_size
 

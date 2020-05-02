@@ -17,10 +17,10 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
     On every epoch end: sets evaluation mode, passes validation data, prints metrics
     TODO: do it in within graph, currently eval_fns_np fails due to tf2.x data format
     """
-    def __init__(self, dataset, log_file, teacher_forcing_on_train=False, eval_every=1):
+    def __init__(self, dataset, log_file, enable_teacher_forcing=True, eval_every=1):
         super(EvalMetricsCallBack, self).__init__()
         self.ds = dataset
-        self.enable_teacher_forcing = not teacher_forcing_on_train
+        self.enable_teacher_forcing = enable_teacher_forcing
         self.log_file = log_file
         self.eval_every = eval_every
 

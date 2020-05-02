@@ -219,16 +219,17 @@ class SRLBilinear(OutputLayer):
                               activation=L.LeakyReLU(alpha=0.1))
 
         self.dropout2 = L.Dropout(1 - self.hparams.mlp_dropout)
-        self.dense_left = L.Dense(50, activation='tanh')  # !
-        self.dense_right = L.Dense(50, activation='tanh')  # !
+        SECOND_SRL_SIZE = 100
+        self.dense_left = L.Dense(SECOND_SRL_SIZE, activation='tanh')  # !
+        self.dense_right = L.Dense(SECOND_SRL_SIZE, activation='tanh')  # !
 
         self.bilinear = nn_utils.BilinearClassifier(
             self.static_params['task_vocab_size'],
             1 - self.hparams.bilinear_dropout,
             # left_input_size=self.predicate_mlp_size,
             # right_input_size=self.role_mlp_size,
-            left_input_size=50,
-            right_input_size=50,
+            left_input_size=SECOND_SRL_SIZE,
+            right_input_size=SECOND_SRL_SIZE,
         )
 
         self.eval_loss = tf.keras.losses.CategoricalCrossentropy(
