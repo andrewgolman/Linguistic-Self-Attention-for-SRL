@@ -195,7 +195,6 @@ class LISAModel(tf.keras.models.Model):
                     tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])
                 )
 
-
         return tf.concat(features, axis=2)
 
     def outputs_to_predictions(self, outputs):
@@ -214,7 +213,7 @@ class LISAModel(tf.keras.models.Model):
         """
         inputs, mask, labels, tokens = self.preprocess_batch(batch)
         features = self.preprocess_features(inputs)
-        tf.stop_gradient(features)
+        features = tf.stop_gradient(features)
 
         outputs = {
             'mask': mask,  # loss needs it
