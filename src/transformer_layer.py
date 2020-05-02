@@ -74,7 +74,7 @@ class MultiHeadAttentionWithSpecial(MultiHeadAttention):
         # Replace last heads with special heads. todo AG optimize
         if len(special_attn) > 0:
             unstacked_dot = tf.unstack(dot, axis=1)  # [BATCH_SIZE, HEADS, SEQ_LEN, SEQ_LEN]
-            for i in range(len(special_attn)):q
+            for i in range(len(special_attn)):
                 unstacked_dot[-i] = tf.zeros_like(unstacked_dot[-i])
             dot = tf.stack(unstacked_dot, axis=1)
             attn = tf.cast(tf.nn.softmax(tf.cast(dot, tf.float32)), dot.dtype)
