@@ -222,6 +222,8 @@ class SRLBilinear(OutputLayer):
         SECOND_SRL_SIZE = 100
         self.dense_left = L.Dense(SECOND_SRL_SIZE, activation='tanh')  # !
         self.dense_right = L.Dense(SECOND_SRL_SIZE, activation='tanh')  # !
+        self.dense_left2 = L.Dense(SECOND_SRL_SIZE)  # !
+        self.dense_right2 = L.Dense(SECOND_SRL_SIZE)  # !
 
         self.bilinear = nn_utils.BilinearClassifier(
             self.static_params['task_vocab_size'],
@@ -287,6 +289,8 @@ class SRLBilinear(OutputLayer):
         gathered_predicates = self.dropout2(gathered_predicates)
         gathered_predicates = self.dense_left(gathered_predicates)  # !
         gathered_roles = self.dense_right(gathered_roles)
+        gathered_predicates = self.dense_left2(gathered_predicates)  # !
+        gathered_roles = self.dense_right2(gathered_roles)
         # now multiply them together to get (num_predicates_in_batch x batch_seq_len x num_srl_classes) tensor of scores
         srl_logits = self.bilinear([gathered_predicates, gathered_roles])  # [PRED_COUNT, bilin_output_size, SEQ_LEN]
         logits_shape = shape_list(srl_logits)
