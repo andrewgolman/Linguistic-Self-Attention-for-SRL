@@ -24,8 +24,8 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
         self.log_file = log_file
         self.eval_every = eval_every
 
-        with open(self.log_file, "w") as fout:
-            pass
+        # with open(self.log_file, "w") as fout:
+        #     pass
 
     def on_epoch_end(self, epoch, logs={}):
         if (epoch + 1) % self.eval_every == 0:
@@ -44,14 +44,15 @@ class EvalMetricsCallBack(tf.keras.callbacks.Callback):
 
 
 class SaveCallBack(tf.keras.callbacks.Callback):
-    def __init__(self, path, save_every=1):
+    def __init__(self, path, save_every=1, start_epoch=0):
         self.path = "{}/checkpoints/".format(path)
         if not os.path.exists(self.path):
             os.mkdir(self.path)
         self.save_every = save_every
+        self.start_epoch = start_epoch
 
     def on_epoch_end(self, epoch, logs={}):
         if (epoch + 1) % self.save_every == 0:
-            save_path = "{}/epoch_{}".format(self.path, epoch + 1)
-            print("Epoch {}, saving model into {}".format(epoch + 1, save_path))
+            save_path = "{}/epoch_{}".format(self.path, epoch + 1 + self.start_epoch)
+            print("Epoch {}, saving model into {}".format(epoch + 1 + self.start_epoch, save_path))
             self.model.save_weights(save_path, save_format='tf')

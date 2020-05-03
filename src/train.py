@@ -144,7 +144,7 @@ def main():
         logging.log(logging.INFO, "Loading model weights from checkpoint {}".format(args.checkpoint))
         model.load_weights(args.checkpoint)
     else:
-        start_epoch = None
+        start_epoch = 0
 
     model.summary()
 
@@ -160,7 +160,7 @@ def main():
         )
         for i, val_dataset in enumerate(val_datasets)
     ]
-    save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10)
+    save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10, start_epoch=start_epoch)
 
     model.fit(
         train_batch_generator,
