@@ -87,10 +87,7 @@ def main():
     feature_idx_map, label_idx_map = util.load_feat_label_idx_maps(data_config)
 
     optimizer = optim.Adam(
-        learning_rate=hparams.learning_rate,
-        beta_1=hparams.beta1,
-        beta_2=hparams.beta2,
-        epsilon=hparams.epsilon,
+        learning_rate=1e-10,
         clipnorm=hparams.gradient_clip_norm,
     )
     optimizer = tfa.optimizers.MovingAverage(optimizer, average_decay=hparams.moving_average_decay)

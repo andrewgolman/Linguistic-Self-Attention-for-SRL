@@ -8,14 +8,14 @@
  "hparams": {
    "label_smoothing": 0.1,
    "input_dropout": 0.8,
-   "mlp_dropout": 0.9,
-   "bilinear_dropout": 0.9,
-   "attn_dropout": 0.9,
-   "ff_dropout": 0.9,
-   "prepost_dropout": 0.8,
+   "mlp_dropout": 0.8,
+   "bilinear_dropout": 0.8,
+   "attn_dropout": 0.8,
+   "ff_dropout": 0.75,
+   "prepost_dropout": 0.75,
    "moving_average_decay": 0.0,
    "gradient_clip_norm": 5.0,
-   "learning_rate": 0.04,
+   "learning_rate": 0.06,
    "decay_rate": 1.5,
    "warmup_steps": 8000,
    "beta1": 0.9,
@@ -24,16 +24,16 @@
    "use_nesterov": true,
 
    "train_epochs": 1000,
-   "steps_per_epoch": 400,
-   "batch_size": 64,
+   "steps_per_epoch": 1000,
+   "batch_size": 128,
    "validation_batch_size": 128
 
  },
  "layers": {
    "type": "transformer",
    "num_heads": 8,
-   "head_dim": 24,
-   "ff_hidden_size": 800
+   "head_dim": 36,
+   "ff_hidden_size": 1152
  },
  "embeddings": {
    "word_type": {
