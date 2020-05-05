@@ -47,6 +47,10 @@ arg_parser.add_argument('--checkpoint', required=False, type=str,
                         help='Start with weights from checkpoint')
 arg_parser.add_argument('--disable_teacher_forcing', action="store_true",
                         help='disable_teacher_forcing')
+arg_parser.add_argument('--tune_first_layer', action="store_true",
+                        help='tune_first_layer')
+arg_parser.add_argument('--eval_every', required=True, type=int)
+arg_parser.add_argument('--save_every', required=True, type=int)
 
 arg_parser.set_defaults(debug=False)
 
@@ -137,6 +141,8 @@ def main():
     model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
     model(batch[0])
 
+    if args.tune_first_layer:
+        model.unfreeze_first_layer()
     model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     if args.checkpoint:
         # todo AG
@@ -155,12 +161,13 @@ def main():
         callbacks.EvalMetricsCallBack(
             val_dataset,
             "{}/metrics_log_{}.txt".format(args.save_dir, i),
-            eval_every=10,
+            eval_every=args.eval_every,
             enable_teacher_forcing=(not args.disable_teacher_forcing)
         )
         for i, val_dataset in enumerate(val_datasets)
     ]
-    save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=10, start_epoch=start_epoch)
+    save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=args.save_every, start_epoch=start_epoch)
+
 
     model.fit(
         train_batch_generator,

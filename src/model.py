@@ -42,6 +42,7 @@ class LISAModel(tf.keras.models.Model):
         self.init_metrics()
         self.custom_eval = False
         self.teacher_forcing = False
+        self.tune_first_layer = False
 
     def init_layers(self, transition_stats):
         self.initial_dropout = L.Dropout(1 - self.hparams.input_dropout)  # todo AG mb noise_shape=[None, 1, <100>] ?
@@ -213,7 +214,7 @@ class LISAModel(tf.keras.models.Model):
         """
         inputs, mask, labels, tokens = self.preprocess_batch(batch)
         features = self.preprocess_features(inputs)
-        features = tf.stop_gradient(features)
+        features = tf.stop_gradient(features) if not self.tune_first_layer else features
 
         outputs = {
             'mask': mask,  # loss needs it
@@ -306,3 +307,6 @@ class LISAModel(tf.keras.models.Model):
         if enable_teacher_forcing:
             self.enable_teacher_forcing()
         self.custom_eval = False
+
+    def unfreeze_first_layer(self):
+        self.tune_first_layer = True
