@@ -50,8 +50,25 @@ def albert_tokenizer(split_line, idx):
     tokenizer = preprocessor_maps.albert_tokenizer
     w = split_line[idx]
     tokens = tokenizer.encode(w, add_special_tokens=False)
-    # if len(tokens) > 1 and tokens[0] == 13:  # todo handle various cases, e.g. punctuation
-    #     return tokens[1]
+    # todo AG handle various cases, e.g. punctuation
+    if len(tokens) > 1 and tokens[0] == 13:  # ! todo AG is it similar for all alberts?
+        return [str(tokens[1])]
+    return [str(tokens[0])]
+
+
+def t5_tokenizer(split_line, idx):
+    tokenizer = preprocessor_maps.t5_tokenizer
+    w = split_line[idx]
+    tokens = tokenizer.encode(w, add_special_tokens=False)
+    if len(tokens) > 1 and tokens[0] == 3:
+        return [str(tokens[1])]
+    return [str(tokens[0])]
+
+
+def bert_tokenizer(split_line, idx):
+    tokenizer = preprocessor_maps.t5_tokenizer
+    w = split_line[idx]
+    tokens = tokenizer.encode(w, add_special_tokens=False)
     return [str(tokens[0])]
 
 
@@ -67,6 +84,8 @@ dispatcher = {
   'idx_list_converter': idx_list_converter,
   'default_converter': idx_list_converter,
   'albert_tokenizer': albert_tokenizer,
+  't5_tokenizer': t5_tokenizer,
+  'bert_tokenizer': bert_tokenizer,
 }
 
 
