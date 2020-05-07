@@ -160,7 +160,7 @@ class TransformerLayer(keras.layers.Layer):
          special_attn: List[[]]
          special_values: List[[]]
         """
-        special_attn = []
+        special_attn = []  # todo AG ! add masks
         special_values = []
 
         for attn_fn in self.attention_fns:

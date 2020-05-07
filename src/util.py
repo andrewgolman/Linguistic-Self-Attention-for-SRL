@@ -149,8 +149,12 @@ def word_to_token_level(outputs, word_begins_full_mask):
     word_seq_len = tf.shape(outputs)[1]
     seq_len = tf.shape(word_begins_full_mask)[1]
     repeated_predictions = tf.repeat(outputs, seq_len, axis=0)  # [BATCH_SIZE * WORD_SEQ_LEN, WORD_SEQ_LEN]
-    repeated_predictions = tf.reshape(repeated_predictions,
-                                      [-1, seq_len, word_seq_len])  # [BATCH_SIZE, WORD_SEQ_LEN, WORD_SEQ_LEN]
+    if len(outputs.get_shape().as_list()) == 2:
+        repeated_predictions = tf.reshape(repeated_predictions,
+                                          [-1, seq_len, word_seq_len])  # [BATCH_SIZE, WORD_SEQ_LEN, WORD_SEQ_LEN]
+    else:
+        repeated_predictions = tf.reshape(repeated_predictions,
+                                          [-1, seq_len, word_seq_len, tf.shape(outputs)[-1]])  # [BATCH_SIZE, WORD_SEQ_LEN, WORD_SEQ_LEN, ...]
 
     # create bool matrix [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN] such that
     # seq_mask[b, i, j] == 1 <==> i-th token moves to j-th place in b-th sample
@@ -160,7 +164,10 @@ def word_to_token_level(outputs, word_begins_full_mask):
     sm2 = tf.cast(tf.sequence_mask(cum_starts_mask_shifted, word_seq_len), outputs.dtype)
     sequence_mask = sm1 - sm2  # [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN]
 
-    return tf.math.reduce_sum(repeated_predictions * sequence_mask, axis=-1)  # [BATCH_SIZE, SEQ_LEN]
+    if len(outputs.get_shape().as_list()) == 3:
+        sequence_mask = tf.expand_dims(sequence_mask, -1)
+
+    return tf.math.reduce_sum(repeated_predictions * sequence_mask, axis=2)  # [BATCH_SIZE, SEQ_LEN]
 
 
 def get_padding_length(word_begins_mask, word_seq_len, seq_len):

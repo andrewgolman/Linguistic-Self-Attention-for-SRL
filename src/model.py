@@ -249,29 +249,31 @@ class LISAModel(tf.keras.models.Model):
 
         # Extract named labels from monolithic "features" input, and mask them
         labels = {}
+        token_labels = {}
         for l, idx in self.label_idx_map.items():
             these_labels = batch[:, :, idx[0]:idx[1]] if idx[1] != -1 else batch[:, :, idx[0]:]
             # [BATCH_SIZE, WORD_LEN, label_len]
 
-            these_labels = util.take_word_start_tokens(
-                these_labels, masks['word_begins_full_mask'], input_shape=[-1, -1, tf.shape(these_labels)[2]]
+            these_labels_masked = tf.multiply(
+                these_labels, tf.cast(tf.expand_dims(masks['token_pad_mask'], -1), tf.int32)
             )
 
-            these_labels_masked = tf.multiply(
-                these_labels, tf.cast(tf.expand_dims(masks['word_pad_mask'], -1), tf.int32)
-            )
             # check if we need to mask another dimension
             if idx[1] == -1:
-                last_dim = tf.shape(these_labels)[2]
-                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE),
-                                     tf.zeros([batch_size, word_seq_len, last_dim], dtype=tf.int32),
-                                     tf.ones([batch_size, word_seq_len, last_dim], dtype=tf.int32))
+                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE), 0, 1)
                 these_labels_masked = tf.multiply(these_labels_masked, this_mask)
             else:
                 these_labels_masked = tf.squeeze(these_labels_masked, -1)
-            labels[l] = these_labels_masked
 
-        return features, masks, labels, tokens
+            token_labels[l] = these_labels_masked
+            last_dim = tf.shape(these_labels)[2]
+            word_labels = util.take_word_start_tokens(
+                these_labels_masked, masks['word_begins_full_mask'],
+                input_shape=[-1, -1, last_dim] if idx[1] == -1 else None
+            )
+            labels[l] = word_labels
+
+        return features, masks, labels, token_labels, tokens
 
     def preprocess_features(self, inputs):
         # Set up model inputs
@@ -302,7 +304,7 @@ class LISAModel(tf.keras.models.Model):
             tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
         :return: predictions
         """
-        inputs, masks, labels, tokens = self.preprocess_batch_push(batch)
+        inputs, masks, labels, token_labels, tokens = self.preprocess_batch_push(batch)
         features = self.preprocess_features(inputs)
         features = tf.stop_gradient(features) if not self.tune_first_layer else features
 
@@ -317,7 +319,7 @@ class LISAModel(tf.keras.models.Model):
         features = self.positional_encoder(features)  # [BATCH_SIZE, SEQ_LEN, SA_HID==NUM_HEADS * HEAD_DIM]
 
         for i in range(self.num_layers):
-            features = self.transformer_layers[i]([features, masks['token_pad_mask'], outputs, labels])
+            features = self.transformer_layers[i]([features, masks['token_pad_mask'], token_level_outputs, token_labels])
 
             predict_features = util.take_word_start_tokens(features, masks['word_begins_full_mask'])
             # [BATCH_SIZE, WORD_LEN, SA_HID]
@@ -335,8 +337,14 @@ class LISAModel(tf.keras.models.Model):
                         labels=labels,
                     )  # todo doc
                     token_level_outputs[task] = {
-                        k: util.word_to_token_level(v, masks['word_pad_mask']) for k, v in outputs[task].items()
+                        k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in outputs[task].items()
                     }
+                    # todo AG remove the duct tape
+                    if task == 'parse_head':
+                        x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
+                        x = util.word_to_token_level(x, masks['word_begins_full_mask'])
+                        x = tf.transpose(x, [0, 2, 1])
+                        token_level_outputs[task]['scores'] = x
 
         losses = self.model_loss(labels, outputs)
 
