@@ -119,3 +119,82 @@ class NotTrackableDict(dict):
     def __init__(self, data):
         # tracking.NotTrackable.__init__(self)
         dict.__init__(self, data)
+
+
+def take_word_start_tokens(features, starts_mask, input_shape=None):
+    """
+    Maps seq_len tensor to word_seq_len by taking slices from the mask
+    :param features: [BATCH_SIZE, SEQ_LEN, ...]
+    :param starts_mask: [BATCH_SIZE, SEQ_LEN]
+    :param input_shape: shape of features tensor if needed
+    :return: [BATCH_SIZE, SEQ_LEN, ...]
+    """
+    if input_shape is None:
+        input_shape = features.get_shape().as_list()
+
+    input_shape[0] = -1
+    input_shape[1] = tf.math.reduce_max(tf.reduce_sum(starts_mask, -1))
+    features = tf.gather_nd(features, tf.where(starts_mask))  # todo !
+    features = tf.reshape(features, input_shape)
+    return features
+
+
+def word_to_token_level(outputs, starts_mask):
+    """
+    Insert zeros
+    :param outputs: [BATCH_SIZE, WORD_SEQ_LEN]
+    :param starts_mask: [BATCH_SIZE, SEQ_LEN]
+    :return: [BATCH_SIZE, SEQ_LEN]
+    """
+    word_seq_len = tf.shape(outputs)[1]
+    seq_len = tf.shape(starts_mask)[1]
+    repeated_predictions = tf.repeat(outputs, seq_len, axis=0)  # [BATCH_SIZE * WORD_SEQ_LEN, WORD_SEQ_LEN]
+    repeated_predictions = tf.reshape(repeated_predictions,
+                                      [-1, seq_len, word_seq_len])  # [BATCH_SIZE, WORD_SEQ_LEN, WORD_SEQ_LEN]
+
+    # create bool matrix [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN] such that
+    # seq_mask[b, i, j] == 1 <==> i-th token moves to j-th place in b-th sample
+    cum_starts_mask = tf.math.cumsum(starts_mask, 1) * starts_mask
+    cum_starts_mask_shifted = (tf.math.cumsum(starts_mask, 1) - 1) * starts_mask
+    sm1 = tf.cast(tf.sequence_mask(cum_starts_mask, word_seq_len), tf.int32)
+    sm2 = tf.cast(tf.sequence_mask(cum_starts_mask_shifted, word_seq_len), tf.int32)
+    sequence_mask = sm1 - sm2  # [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN]
+
+    return tf.math.reduce_sum(repeated_predictions * sequence_mask, axis=-1)  # [BATCH_SIZE, SEQ_LEN]
+
+
+def get_padding_length(word_begins_mask, word_seq_len, seq_len):
+    """
+    In the dataset, sentences are padded to the length of a max token sequence.
+    For moving data between SEQ_LEN and WORD_SEQ_LEN tensors, we need to provide
+    mapping between word begins position for ALL words, including words that would have been
+    added by batch padding. There might not be enough space for these words.
+    Example:
+    [w1, w1, w1, w1, w2]
+    [w3, w4, w5, PAD, PAD]
+    WORD_SEQ_LEN=3, so we need 3 tokens be word begins in sentence one, but there is no space for the third token
+    (this can be overcome by storing indices) todo
+    :param word_begins_mask: [BATCH_SIZE, SEQ_LEN]
+    :return: int
+    """
+    return tf.reduce_max(
+        (word_seq_len - tf.range(seq_len - 1, -1, -1) - tf.cumsum(word_begins_mask, axis=1)) * word_begins_mask
+    )
+
+
+def pad_right(data, pad_len):
+    paddings = tf.convert_to_tensor([[0, 0], [0, pad_len]])
+    return tf.pad(data, paddings)
+
+
+def padded_to_full_word_mask(word_begins_mask, word_seq_len, seq_len):
+    """
+    Word mask maps word begins to words. Here we all to this mask mapping to padded words
+    """
+    return tf.where(
+        tf.greater(
+            tf.range(seq_len, 0, -1), word_seq_len - tf.cumsum(word_begins_mask, axis=1)
+        ),
+        word_begins_mask,
+        1
+    )
