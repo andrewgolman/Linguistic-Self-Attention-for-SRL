@@ -307,7 +307,7 @@ class LISAModel(tf.keras.models.Model):
         features = tf.stop_gradient(features) if not self.tune_first_layer else features
 
         outputs = {
-            'mask': masks['word_pad_mask'],  # loss needs it
+            'mask': tf.cast(masks['word_pad_mask'], tf.float32),  # loss needs it
             'tokens': tokens,  # will be used in evaluation, srl.pl needs words  # todo or does it?
         }
         token_level_outputs = {}

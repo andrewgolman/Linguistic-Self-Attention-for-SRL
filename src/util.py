@@ -139,25 +139,25 @@ def take_word_start_tokens(features, starts_mask, input_shape=None):
     return features
 
 
-def word_to_token_level(outputs, starts_mask):
+def word_to_token_level(outputs, word_begins_full_mask):
     """
     Insert zeros
-    :param outputs: [BATCH_SIZE, WORD_SEQ_LEN]
-    :param starts_mask: [BATCH_SIZE, SEQ_LEN]
+    :param outputs: [BATCH_SIZE, WORD_SEQ_LEN, ...]
+    :param word_begins_full_mask: [BATCH_SIZE, SEQ_LEN]
     :return: [BATCH_SIZE, SEQ_LEN]
     """
     word_seq_len = tf.shape(outputs)[1]
-    seq_len = tf.shape(starts_mask)[1]
+    seq_len = tf.shape(word_begins_full_mask)[1]
     repeated_predictions = tf.repeat(outputs, seq_len, axis=0)  # [BATCH_SIZE * WORD_SEQ_LEN, WORD_SEQ_LEN]
     repeated_predictions = tf.reshape(repeated_predictions,
                                       [-1, seq_len, word_seq_len])  # [BATCH_SIZE, WORD_SEQ_LEN, WORD_SEQ_LEN]
 
     # create bool matrix [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN] such that
     # seq_mask[b, i, j] == 1 <==> i-th token moves to j-th place in b-th sample
-    cum_starts_mask = tf.math.cumsum(starts_mask, 1) * starts_mask
-    cum_starts_mask_shifted = (tf.math.cumsum(starts_mask, 1) - 1) * starts_mask
-    sm1 = tf.cast(tf.sequence_mask(cum_starts_mask, word_seq_len), tf.int32)
-    sm2 = tf.cast(tf.sequence_mask(cum_starts_mask_shifted, word_seq_len), tf.int32)
+    cum_starts_mask = tf.math.cumsum(word_begins_full_mask, 1) * word_begins_full_mask
+    cum_starts_mask_shifted = (tf.math.cumsum(word_begins_full_mask, 1) - 1) * word_begins_full_mask
+    sm1 = tf.cast(tf.sequence_mask(cum_starts_mask, word_seq_len), outputs.dtype)
+    sm2 = tf.cast(tf.sequence_mask(cum_starts_mask_shifted, word_seq_len), outputs.dtype)
     sequence_mask = sm1 - sm2  # [BATCH_SIZE, WORD_SEQ_LEN, SEQ_LEN]
 
     return tf.math.reduce_sum(repeated_predictions * sequence_mask, axis=-1)  # [BATCH_SIZE, SEQ_LEN]
