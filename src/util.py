@@ -121,21 +121,22 @@ class NotTrackableDict(dict):
         dict.__init__(self, data)
 
 
-def take_word_start_tokens(features, starts_mask, input_shape=None):
+def take_word_start_tokens(features, starts_mask, shape=None):
     """
     Maps seq_len tensor to word_seq_len by taking slices from the mask
+    Assumes that features.shape[-1] != 0
     :param features: [BATCH_SIZE, SEQ_LEN, ...]
     :param starts_mask: [BATCH_SIZE, SEQ_LEN]
-    :param input_shape: shape of features tensor if needed
+    :param shape: shape of features tensor if needed
     :return: [BATCH_SIZE, SEQ_LEN, ...]
     """
-    if input_shape is None:
-        input_shape = features.get_shape().as_list()
+    if shape is None:
+        shape = features.get_shape().as_list()
 
-    input_shape[0] = -1
-    input_shape[1] = tf.math.reduce_max(tf.reduce_sum(starts_mask, -1))
-    features = tf.gather_nd(features, tf.where(starts_mask))  # todo !
-    features = tf.reshape(features, input_shape)
+    shape[0] = -1
+    shape[1] = tf.math.reduce_max(tf.reduce_sum(starts_mask, -1))
+    features = tf.gather_nd(features, tf.where(starts_mask))
+    features = tf.reshape(features, shape)
     return features
 
 
@@ -190,7 +191,13 @@ def get_padding_length(word_begins_mask, word_seq_len, seq_len):
 
 
 def pad_right(data, pad_len):
-    paddings = tf.convert_to_tensor([[0, 0], [0, pad_len]])
+    shape = data.get_shape().as_list()
+    if len(shape) == 2:
+        paddings = tf.convert_to_tensor([[0, 0], [0, pad_len]])
+    elif len(shape) == 3:
+        paddings = tf.convert_to_tensor([[0, 0], [0, pad_len], [0, 0]])
+    else:
+        raise NotImplementedError
     return tf.pad(data, paddings)
 
 

@@ -9,6 +9,10 @@ tokenizers = {
 }
 
 
+def get_sentence(lines):
+    return " ".join(l.split()[3] for l in lines)
+
+
 def tokenize_words(input_file, output_file, tokenizer):
     """
     # INPUT FORMAT
@@ -30,23 +34,38 @@ def tokenize_words(input_file, output_file, tokenizer):
     # Fields range(14, 14+PRED_COUNT): for each predicate, a column representing the labeled arguments of the predicate.
     """
     with open(input_file) as fin, open(output_file, "w") as fout:
+        sentences = set()
+        lines = []
+        ignored = 0
+        total = 0
+
         for line in fin:
             if not line.strip():
-                print("", file=fout)
-                continue
-
-            fields = line.strip().split("\t")
-            tokens = tokenizer.encode(fields[3], add_special_tokens=False)
-            for i, t in enumerate(tokens):
-                if i == 0:
-                    fields[12] = "1"
+                total += 1
+                if len(lines) < 100 and len(lines[0].split()) > 14 and get_sentence(lines) not in sentences:
+                    sentences.add(get_sentence(lines))
+                    for s in lines:
+                        print(s, file=fout)
+                    print("", file=fout)
                 else:
-                    for j in range(4, len(fields)):
-                        fields[j] = "0"
+                    # print(len(lines), len(lines[0].split()), get_sentence(lines) in sentences)
+                    ignored += 1
+                lines = []
+            else:
+                fields = line.strip().split("\t")
+                tokens = tokenizer.encode(fields[3], add_special_tokens=False)
+                for i, t in enumerate(tokens):
+                    if i == 0:
+                        fields[12] = "1"
+                    else:
+                        for j in range(4, len(fields)):
+                            fields[j] = "0"
 
-                fields[11] = str(t)
-                line = "\t".join(fields)
-                print(line, file=fout)
+                    fields[11] = str(t)
+                    line = "\t".join(fields)
+                    lines.append(line)
+
+        print(input_file, "Ignored", ignored, "sentences from", total)
 
 
 def main(file):
@@ -57,7 +76,15 @@ def main(file):
 
 
 if __name__ == "__main__":
-    arg_parser = argparse.ArgumentParser(description='One line for every word -> one line for every token')
-    arg_parser.add_argument('--in_file_name', type=str, help='File to process')
-    args = arg_parser.parse_args()
-    main(args.in_file_name)
+    # arg_parser = argparse.ArgumentParser(description='One line for every word -> one line for every token')
+    # arg_parser.add_argument('--in_file_name', type=str, help='File to process')
+    # args = arg_parser.parse_args()
+    # main(args.in_file_name)
+    files = [
+        "data/conll2012-train.txt.lisa",
+        "data/conll2012-dev.txt.lisa",
+        "data/conll2012-test.txt.lisa",
+        "data/conll2012-train-eval.txt.lisa",
+    ]
+    for file in files:
+        main(file)

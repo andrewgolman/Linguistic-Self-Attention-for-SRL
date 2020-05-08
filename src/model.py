@@ -185,23 +185,22 @@ class LISAModel(tf.keras.models.Model):
         return features, mask, pred_mask, labels, tokens
 
     # RUNNING PART
-    def compute_masks(self, words, batch_size, seq_len, word_begins_mask=None):
+    def compute_masks(self, words, seq_len, word_begins_mask=None):
         """
         :param words: [BATCH_SIZE, SEQ_LEN]
         :param word_begins: [BATCH_SIZE, SEQ_LEN]
         :returns
-            token_pad_mask: which tokens are pad values
+            token_pad_mask: which tokens are not pad values
             word_begins_mask: which tokens correspond to word begins, excluding pad words
-            word_pad_mask: which words are pad values
             word_begins_full_mask: which tokens correspond to word begins, including pad words
+            word_pad_mask: which words are not pad values
         """
         token_pad_mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)  # [BATCH_SIZE, SEQ_LEN]
 
         if word_begins_mask is not None:
             word_begins_mask = tf.where(
                 tf.equal(word_begins_mask, 0),
-                0,  # tf.zeros([batch_size, seq_len]),
-                token_pad_mask
+                0, token_pad_mask
             )
             word_seq_len = tf.reduce_max(tf.reduce_sum(word_begins_mask, 1))
             pad_len = util.get_padding_length(word_begins_mask, word_seq_len, seq_len)
@@ -217,25 +216,24 @@ class LISAModel(tf.keras.models.Model):
             word_seq_len = seq_len
             word_begins_mask = token_pad_mask
             word_pad_mask = token_pad_mask
-            word_begins_full_mask = token_pad_mask
+            word_begins_full_mask = tf.ones_like(word_begins_mask)
 
         masks = {
             'token_pad_mask': token_pad_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
             'word_begins_mask': word_begins_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_pad_mask': word_pad_mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
             'word_begins_full_mask': word_begins_full_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+            'word_pad_mask': word_pad_mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
         }
         return masks, pad_len, word_seq_len
 
     def preprocess_batch_push(self, batch):
         batch_shape = tf.shape(batch)
-        batch_size = batch_shape[0]
         seq_len = batch_shape[1]
 
         features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
 
         words = features[_MAIN_INPUT]
-        masks, pad_len, word_seq_len = self.compute_masks(words, batch_size, seq_len, features.get('word_begin'))
+        masks, pad_len, word_seq_len = self.compute_masks(words, seq_len, features.get('word_begin'))
         seq_len += pad_len
 
         # Extract named features from monolithic "features" input
@@ -253,23 +251,18 @@ class LISAModel(tf.keras.models.Model):
         for l, idx in self.label_idx_map.items():
             these_labels = batch[:, :, idx[0]:idx[1]] if idx[1] != -1 else batch[:, :, idx[0]:]
             # [BATCH_SIZE, WORD_LEN, label_len]
+            these_labels = util.pad_right(these_labels, pad_len)
+            this_mask = tf.where(tf.equal(these_labels, constants.PAD_VALUE), 0, 1)
+            these_labels_masked = tf.multiply(these_labels, this_mask)
+            last_dim = tf.shape(these_labels)[2]
 
-            these_labels_masked = tf.multiply(
-                these_labels, tf.cast(tf.expand_dims(masks['token_pad_mask'], -1), tf.int32)
-            )
-
-            # check if we need to mask another dimension
-            if idx[1] == -1:
-                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE), 0, 1)
-                these_labels_masked = tf.multiply(these_labels_masked, this_mask)
-            else:
+            if idx[1] != -1:
                 these_labels_masked = tf.squeeze(these_labels_masked, -1)
 
             token_labels[l] = these_labels_masked
-            last_dim = tf.shape(these_labels)[2]
             word_labels = util.take_word_start_tokens(
                 these_labels_masked, masks['word_begins_full_mask'],
-                input_shape=[-1, -1, last_dim] if idx[1] == -1 else None
+                shape=[-1, -1, last_dim] if idx[1] == -1 else None
             )
             labels[l] = word_labels
 
@@ -336,15 +329,17 @@ class LISAModel(tf.keras.models.Model):
                         outputs=outputs,
                         labels=labels,
                     )  # todo doc
-                    token_level_outputs[task] = {
-                        k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in outputs[task].items()
-                    }
-                    # todo AG remove the duct tape
-                    if task == 'parse_head':
-                        x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
-                        x = util.word_to_token_level(x, masks['word_begins_full_mask'])
-                        x = tf.transpose(x, [0, 2, 1])
-                        token_level_outputs[task]['scores'] = x
+                    if i != self.num_layers - 1:
+                        # todo AG remove all this duct tape (through configs maybe)
+                        token_level_outputs[task] = {
+                            k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in
+                                outputs[task].items() if k in ['probabilities', 'scores', 'gold_pos_probabilities']
+                        }
+                        if task == 'parse_head':
+                            x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
+                            x = util.word_to_token_level(x, masks['word_begins_full_mask'])
+                            x = tf.transpose(x, [0, 2, 1])
+                            token_level_outputs[task]['scores'] = x
 
         losses = self.model_loss(labels, outputs)
 
