@@ -154,13 +154,10 @@ class LISAModel(tf.keras.models.Model):
 
         features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
 
-        # ES todo this assumes that word_type is always passed in
         words = features[_MAIN_INPUT]
 
         # for masking out padding tokens
-        mask = tf.where(tf.equal(words, constants.PAD_VALUE), tf.zeros([batch_size, batch_seq_len]),
-                        tf.ones([batch_size, batch_seq_len]))
-        pred_mask = mask if 'word_begin' not in features else features['word_begin']
+        mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)
 
         # Extract named features from monolithic "features" input
         features = {f: tf.multiply(tf.cast(mask, tf.int32), v) for f, v in features.items()}
@@ -174,15 +171,20 @@ class LISAModel(tf.keras.models.Model):
             # check if we need to mask another dimension
             if idx[1] == -1:
                 last_dim = tf.shape(these_labels)[2]
-                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE),
-                                     tf.zeros([batch_size, batch_seq_len, last_dim], dtype=tf.int32),
-                                     tf.ones([batch_size, batch_seq_len, last_dim], dtype=tf.int32))
+                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE), 0, 1)
                 these_labels_masked = tf.multiply(these_labels_masked, this_mask)
             else:
                 these_labels_masked = tf.squeeze(these_labels_masked, -1)
             labels[l] = these_labels_masked
 
-        return features, mask, pred_mask, labels, tokens
+        token_labels = labels
+        masks = {
+            'token_pad_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+            'word_begins_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+            'word_begins_full_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+            'word_pad_mask': mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
+        }
+        return features, masks, labels, token_labels, tokens
 
     # RUNNING PART
     def compute_masks(self, words, seq_len, word_begins_mask=None):
@@ -297,15 +299,17 @@ class LISAModel(tf.keras.models.Model):
             tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
         :return: predictions
         """
-        inputs, masks, labels, token_labels, tokens = self.preprocess_batch_push(batch)
+        # inputs, masks, labels, token_labels, tokens = self.preprocess_batch_push(batch) # !!!
+        inputs, masks, labels, token_labels, tokens = self.preprocess_batch(batch)
         features = self.preprocess_features(inputs)
         features = tf.stop_gradient(features) if not self.tune_first_layer else features
 
         outputs = {
-            'mask': tf.cast(masks['word_pad_mask'], tf.float32),  # loss needs it
+            # 'mask': tf.cast(masks['word_pad_mask'], tf.float32),  # loss needs it  !!!
+            'mask': tf.cast(masks['word_begins_mask'], tf.float32),  # loss needs it
             'tokens': tokens,  # will be used in evaluation, srl.pl needs words  # todo or does it?
         }
-        token_level_outputs = {}
+        token_level_outputs = outputs
 
         features = self.initial_dropout(features)
         features = self.dense1(features)
@@ -314,7 +318,8 @@ class LISAModel(tf.keras.models.Model):
         for i in range(self.num_layers):
             features = self.transformer_layers[i]([features, masks['token_pad_mask'], token_level_outputs, token_labels])
 
-            predict_features = util.take_word_start_tokens(features, masks['word_begins_full_mask'])
+            # predict_features = util.take_word_start_tokens(features, masks['word_begins_full_mask'])
+            predict_features = features
             # [BATCH_SIZE, WORD_LEN, SA_HID]
 
             # if normalization is done in layer_preprocess, then it should also be done
@@ -325,26 +330,34 @@ class LISAModel(tf.keras.models.Model):
             for task, layer in self.output_layers.items():
                 if layer.transformer_layer_id == i:
                     outputs[task] = self.output_layers[task](
-                        [predict_features, masks['word_pad_mask']],
-                        outputs=outputs,
-                        labels=labels,
+                        [predict_features, masks['word_begins_mask']],
+                        outputs=token_level_outputs,
+                        labels=token_labels,
                     )  # todo doc
-                    if i != self.num_layers - 1:
-                        # todo AG remove all this duct tape (through configs maybe)
-                        token_level_outputs[task] = {
-                            k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in
-                                outputs[task].items() if k in ['probabilities', 'scores', 'gold_pos_probabilities']
-                        }
-                        if task == 'parse_head':
-                            x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
-                            x = util.word_to_token_level(x, masks['word_begins_full_mask'])
-                            x = tf.transpose(x, [0, 2, 1])
-                            token_level_outputs[task]['scores'] = x
+                    # outputs[task] = self.output_layers[task](
+                    #     [predict_features, masks['word_pad_mask']],
+                    #     outputs=outputs,
+                    #     labels=labels,
+                    # )  # todo doc
+                    # if i != self.num_layers - 1:
+                    # todo AG remove all this duct tape (through configs maybe)
+                    token_level_outputs[task] = outputs[task]
+                        # token_level_outputs[task] = {
+                        #     k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in
+                        #         outputs[task].items()
+                        # }
+                        # if task == 'parse_head':
+                        #     x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
+                        #     x = util.word_to_token_level(x, masks['word_begins_full_mask'])
+                        #     x = tf.transpose(x, [0, 2, 1])
+                        #     token_level_outputs[task]['scores'] = x
 
-        losses = self.model_loss(labels, outputs)
+        # losses = self.model_loss(labels, outputs)
+        losses = self.model_loss(token_labels, token_level_outputs)
 
         if self.custom_eval:
-            self.update_metrics(labels, outputs, losses)
+            # self.update_metrics(labels, outputs, losses)
+            self.update_metrics(token_labels, token_level_outputs, losses)
 
         predictions = self.outputs_to_predictions(outputs)
         if self.custom_eval:
