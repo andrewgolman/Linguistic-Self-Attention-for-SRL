@@ -10,4 +10,6 @@ python src/train.py \
 --layer_configs config/layer_configs/lisa2_layers.json \
 --attention_configs config/attention_configs/parse_attention.json,config/attention_configs/parse_label_attention.json,config/attention_configs/pos_attention.json \
 --best_eval_key srl_f1 \
---save_dir model
+--save_dir onmt_fixed \
+--eval_every 10 \
+--save_every 10

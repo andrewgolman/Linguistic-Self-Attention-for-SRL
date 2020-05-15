@@ -22,6 +22,6 @@ config/attention_configs/parse_attention.json,config/attention_configs/parse_lab
 --best_eval_key \
 srl_f1 \
 --save_dir \
-model \
+full_run_srl_default \
 --checkpoint \
-model/checkpoints/epoch_20
+full_run_srl_default/checkpoints/epoch_190
