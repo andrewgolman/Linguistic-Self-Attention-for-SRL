@@ -55,6 +55,9 @@ arg_parser.set_defaults(debug=False, num_gpus=1, keep_k_best_models=1)
 
 args, leftovers = arg_parser.parse_known_args()
 
+from tensorflow.keras.backend import manual_variable_initialization
+manual_variable_initialization(True)
+
 
 def main():
     util.init_logging(logging.INFO)
@@ -109,8 +112,12 @@ def main():
         num_epochs=1,
         shuffle=False, batch_size=8
     )
+    batch = next(train_batch_generator)
+    model.start_custom_eval()
+    model(batch[0])
+
     model.end_custom_eval()
-    model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
+    # model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     model.load_weights(args.checkpoint)
 
     model.start_custom_eval()

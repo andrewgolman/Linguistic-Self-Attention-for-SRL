@@ -18,17 +18,8 @@ def strip_conll12_domain_converter(split_line, idx):
 
 
 def conll12_binary_predicates_converter(split_line, idx):
-  return [str(split_line[idx] != '-')]
-
-
-def conll09_binary_predicates_converter(split_line, idx):
-  return [str(split_line[idx] != '_')]
-
-
-def conll09_predicate_sense_converter(split_line, idx):
-  verb_sense_str = split_line[idx]
-  just_verb_sense = verb_sense_str if verb_sense_str == "_" else verb_sense_str.split('.')[1]
-  return [just_verb_sense]
+  s = split_line[idx]
+  return [str(s != '-' and s != "0")]
 
 
 def joint_converter(split_line, idx, component_converters):
@@ -76,8 +67,6 @@ dispatcher = {
   'parse_roots_self_loop': parse_roots_self_loop_converter,
   'strip_conll12_domain': strip_conll12_domain_converter,
   'conll12_binary_predicates': conll12_binary_predicates_converter,
-  'conll09_binary_predicates': conll09_binary_predicates_converter,
-  'conll09_predicate_sense': conll09_predicate_sense_converter,
   'lowercase': lowercase_converter,
   'joint_converter': joint_converter,
   'idx_range_converter': idx_range_converter,

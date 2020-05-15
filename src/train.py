@@ -143,7 +143,6 @@ def main():
 
     if args.tune_first_layer:
         model.unfreeze_first_layer()
-    model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
     if args.checkpoint:
         # todo AG
         start_epoch = int(args.checkpoint.split("_")[-1])
@@ -153,6 +152,7 @@ def main():
         start_epoch = 0
 
     model.summary()
+    model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(
         train_utils.learning_rate_scheduler(hparams, start_epoch=start_epoch),
@@ -167,7 +167,6 @@ def main():
         for i, val_dataset in enumerate(val_datasets)
     ]
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=args.save_every, start_epoch=start_epoch)
-
 
     model.fit(
         train_batch_generator,
