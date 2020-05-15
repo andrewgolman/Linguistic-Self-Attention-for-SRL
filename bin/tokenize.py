@@ -13,7 +13,7 @@ def get_sentence(lines):
     return " ".join(l.split()[3] for l in lines)
 
 
-def tokenize_words(input_file, output_file, tokenizer):
+def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
     """
     # INPUT FORMAT
     # https://github.com/strubell/preprocess-conll05
@@ -65,14 +65,17 @@ def tokenize_words(input_file, output_file, tokenizer):
                     line = "\t".join(fields)
                     lines.append(line)
 
+                    if not multitoken:
+                        break
+
         print(input_file, "Ignored", ignored, "sentences from", total)
 
 
 def main(file):
     print("INFO: tokenizing words in file", file)
     tokenizer = tokenizers['albert']  # todo AG add arg
-    res_file = ".".join(file.split(".")[:-1] + ["lisa_albert"])
-    tokenize_words(file, res_file, tokenizer)
+    res_file = ".".join(file.split(".")[:-1] + ["single_albert"])
+    tokenize_words(file, res_file, tokenizer, multitoken=False)
 
 
 if __name__ == "__main__":
