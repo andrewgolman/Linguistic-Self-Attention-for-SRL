@@ -249,7 +249,6 @@ class SRLBilinear(OutputLayer):
         :param transition_params: [num_labels x num_labels] transition parameters, if doing Viterbi decoding
         '''
         features, mask = data
-        self.teacher_forcing = True  # !!!
 
         input_shape = tf.shape(features)
         batch_size = input_shape[0]
@@ -312,7 +311,6 @@ class SRLBilinear(OutputLayer):
         return output
 
     def loss(self, targets, output, mask):
-        self.teacher_forcing = True  # !!!
         num_labels = self.static_params['task_vocab_size']
         transition_params = self.static_params['transition_params']
 
@@ -327,8 +325,7 @@ class SRLBilinear(OutputLayer):
         if not self.teacher_forcing:  # compute loss only on correctly predicted predicates
             correct_predicate_preds = tf.math.multiply(predicate_targets, tf.cast(predicate_preds, tf.int32))
             # correct_predicate_indices = tf.where(correct_predicate_preds)
-            loss_calculation_mask = tf.gather_nd(predicate_targets, tf.where(
-                predicate_preds * tf.cast(mask, predicate_preds.dtype)))  # [PRED_COUNT]
+            loss_calculation_mask = tf.gather_nd(predicate_targets, tf.where(predicate_preds))  # [PRED_COUNT]
             loss_calculation_ind = tf.squeeze(tf.where(loss_calculation_mask))  # [COR_PRED_COUNT]
 
             srl_logits_correct = tf.gather(srl_logits_transposed, loss_calculation_ind)  # [COR_PRED_COUNT,
@@ -358,7 +355,6 @@ class SRLBilinear(OutputLayer):
                 self.static_params['transition_params'] = new_transition_params
 
         else:
-            # return 0
             # num_predicates = shape_list(srl_logits_transposed)[0]
             # if tf.equal(num_predicates, 0):
             #     return 1e5
