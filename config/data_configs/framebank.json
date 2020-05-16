@@ -1,0 +1,59 @@
+{
+  "id": {
+    "conll_idx": 1
+  },
+  "sent_id": {
+    "conll_idx": 0,
+    "label": true
+  },
+  "word": {
+    "conll_idx": 2,
+    "feature": true,
+    "vocab": "word",
+    "oov": false,
+    "updatable": true
+  },
+  "word_type": {
+    "conll_idx": 2,
+    "feature": true,
+    "vocab": "embeddings/test_embeddings.txt",
+    "converter":  {
+      "name": "lowercase"
+    },
+    "oov": true
+  },
+  "gold_pos": {
+    "conll_idx": 6,
+    "label": true,
+    "vocab": "gold_pos"
+  },
+  "parse_head": {
+    "conll_idx": [4, 1],
+    "label": true,
+    "converter":  {
+      "name": "parse_roots_self_loop"
+    }
+  },
+  "parse_label": {
+    "conll_idx": 5,
+    "label": true,
+    "vocab": "parse_label"
+  },
+  "predicate": {
+    "conll_idx": 3,
+    "label": true,
+    "vocab": "predicate",
+    "converter": {
+      "name": "conll12_binary_predicates"
+    }
+  },
+  "srl": {
+    "conll_idx": [7, -1],
+    "type": "range",
+    "label": true,
+    "vocab": "srl",
+    "converter": {
+      "name": "idx_range_converter"
+    }
+  }
+}
