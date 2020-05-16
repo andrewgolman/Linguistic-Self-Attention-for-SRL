@@ -59,12 +59,11 @@ increased.
 - attention is normalized when being copied from another layer
 - on inference SRL loss is calculated over correctly predicted predicates.
 This might be used on the late stages of training
-- BERT preprocessing is coming up...
 
 #### Current todos:
-- fit with in transformer config
+- add masks for training on Russian Framebank
+- generate features with large models and save them prior to training phase
 - evaluate within the graph
-- preprocess Russian dataset
 
 #### Notes:
 - long sentences are also deleted from training dataset to save some gpu memory...
