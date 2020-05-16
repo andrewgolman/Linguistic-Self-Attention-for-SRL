@@ -38,11 +38,12 @@ def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
         lines = []
         ignored = 0
         total = 0
+        token_count = 0
 
         for line in fin:
             if not line.strip():
                 total += 1
-                if len(lines) < 100 and len(lines[0].split()) > 14 and get_sentence(lines) not in sentences:
+                if token_count < 100 and len(lines[0].split()) > 14 and get_sentence(lines) not in sentences:
                     sentences.add(get_sentence(lines))
                     for s in lines:
                         print(s, file=fout)
@@ -51,9 +52,11 @@ def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
                     # print(len(lines), len(lines[0].split()), get_sentence(lines) in sentences)
                     ignored += 1
                 lines = []
+                token_count = 0
             else:
                 fields = line.strip().split("\t")
                 tokens = tokenizer.encode(fields[3], add_special_tokens=False)
+                token_count += len(tokens)
                 for i, t in enumerate(tokens):
                     if i == 0:
                         fields[12] = "1"
@@ -74,8 +77,12 @@ def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
 def main(file):
     print("INFO: tokenizing words in file", file)
     tokenizer = tokenizers['albert']  # todo AG add arg
+
     res_file = ".".join(file.split(".")[:-1] + ["single_albert"])
     tokenize_words(file, res_file, tokenizer, multitoken=False)
+
+    # res_file = ".".join(file.split(".")[:-1] + ["lisa_albert"])
+    # tokenize_words(file, res_file, tokenizer, multitoken=True)
 
 
 if __name__ == "__main__":
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     # main(args.in_file_name)
     files = [
         "data/conll2012-train.txt.lisa",
-        "data/conll2012-dev.txt.lisa",
+        # "data/conll2012-dev.txt.lisa",
         "data/conll2012-test.txt.lisa",
         "data/conll2012-train-eval.txt.lisa",
     ]
