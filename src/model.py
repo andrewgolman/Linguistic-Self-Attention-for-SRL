@@ -309,7 +309,7 @@ class LISAModel(tf.keras.models.Model):
             # 'mask': tf.cast(masks['word_begins_mask'], tf.float32),  # loss needs it
             'tokens': tokens,  # will be used in evaluation, srl.pl needs words  # todo or does it?
         }
-        token_level_outputs = outputs
+        token_level_outputs = {}
 
         features = self.initial_dropout(features)
         features = self.dense1(features)
@@ -329,11 +329,6 @@ class LISAModel(tf.keras.models.Model):
 
             for task, layer in self.output_layers.items():
                 if layer.transformer_layer_id == i:
-                    # outputs[task] = self.output_layers[task](
-                    #     [predict_features, masks['word_begins_mask']],
-                    #     outputs=token_level_outputs,
-                    #     labels=token_labels,
-                    # )  # todo doc
                     outputs[task] = self.output_layers[task](
                         [predict_features, masks['word_pad_mask']],
                         outputs=outputs,
@@ -341,7 +336,6 @@ class LISAModel(tf.keras.models.Model):
                     )  # todo doc
                     if i != self.num_layers - 1:
                         # todo AG remove all this duct tape (through configs maybe)
-                        # token_level_outputs[task] = outputs[task]
                         token_level_outputs[task] = {
                             k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in
                                 outputs[task].items()
@@ -353,11 +347,10 @@ class LISAModel(tf.keras.models.Model):
                             token_level_outputs[task]['scores'] = x
 
         losses = self.model_loss(labels, outputs)
-        # losses = self.model_loss(token_labels, token_level_outputs)
 
         if self.custom_eval:
-            # self.update_metrics(labels, outputs, losses)
-            self.update_metrics(token_labels, token_level_outputs, losses)
+            self.update_metrics(labels, outputs, losses)
+            # self.update_metrics(token_labels, token_level_outputs, losses)
 
         predictions = self.outputs_to_predictions(outputs)
         if self.custom_eval:
