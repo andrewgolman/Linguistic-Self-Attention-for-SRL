@@ -275,9 +275,10 @@ class LISAModel(tf.keras.models.Model):
         features = []
         for input_name in self.model_config['inputs']:  # word type and/or predicate
             if input_name == _MAIN_INPUT and self.model_config['first_layer'] != 'embeddings':
+                feat = self.first_layer_model(inputs[input_name])
                 features.append(
-                    self.first_layer_model(inputs[input_name])[0]
-                )
+                    feat[0] if self.model_config['first_layer'] != 'rubert' else feat
+                )  # todo check in preprocessors
             else:
                 features.append(
                     tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])

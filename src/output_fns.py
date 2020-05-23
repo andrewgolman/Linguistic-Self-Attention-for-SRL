@@ -287,6 +287,10 @@ class SRLBilinear(OutputLayer):
         # num_predicates_in_batch x seq_len
         predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN] (role for each word for each predicate)
 
+        # compute loss only on words given in srl_mask
+        srl_mask = kwargs.get('srl_mask')
+        if srl_mask is not None:
+            mask *= srl_mask
         # need to repeat each of these once for each target in the sentence
         mask_tiled = tf.reshape(tf.tile(mask, [1, batch_seq_len]), [batch_size, batch_seq_len, batch_seq_len])
         gather_mask = tf.gather_nd(mask_tiled, predicate_gather_indices)
