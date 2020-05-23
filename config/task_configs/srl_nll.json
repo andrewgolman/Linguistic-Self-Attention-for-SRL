@@ -17,6 +17,9 @@
         },
         "predicate_preds_eval": {
           "label": "predicate"
+        },
+        "srl_mask": {
+          "label": "srl_mask"
         }
       }
     },

@@ -1,5 +1,5 @@
 {
- "first_layer": "embeddings",
+ "first_layer": "rubert",
  "predicate_mlp_size": 100,
  "role_mlp_size": 100,
  "predicate_pred_mlp_size": 100,
@@ -36,10 +36,6 @@
    "ff_hidden_size": 384
  },
  "embeddings": {
-   "word_type": {
-     "embedding_dim": 100,
-     "pretrained_embeddings": "embeddings/test_embeddings.txt"
-   }
  },
  "inputs": [
    "word_type"
