@@ -1,6 +1,10 @@
 import transformers
 import tensorflow as tf
-import torch
+try:
+    import torch
+except ImportError:
+    print("UNABLE TO IMPORT TORCH")
+
 from opennmt.utils.misc import shape_list
 
 

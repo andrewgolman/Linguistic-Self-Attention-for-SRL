@@ -109,6 +109,16 @@ class ConllSrlEval(BaseMetric):
         str_pos_predictions = nn_utils.int_to_str_lookup_table(pos_predictions, reverse_maps['gold_pos'])
         str_pos_targets = nn_utils.int_to_str_lookup_table(pos_targets, reverse_maps['gold_pos'])
 
+        if 'srl_mask' in kwargs:
+            srl_mask = kwargs['srl_mask']
+            srl_seq_len = tf.math.reduce_max(tf.reduce_sum(srl_mask, -1))
+            # no need for extra padding, as WORD_SEQ_LEN is a length of a padded word sequence
+            srl_mask = util.padded_to_full_word_mask(srl_mask, srl_seq_len, tf.shape(srl_mask)[1])
+            str_predictions = util.take_word_start_tokens(str_predictions, srl_mask)
+            str_words = util.take_word_start_tokens(str_words, srl_mask)
+            str_targets = util.take_word_start_tokens(str_targets, srl_mask)
+            str_pos_predictions = util.take_word_start_tokens(str_pos_predictions, srl_mask)
+            str_pos_targets = util.take_word_start_tokens(str_pos_targets, srl_mask)
 
         # need to pass through the stuff for pyfunc
         # pyfunc is necessary here since we need to write to disk

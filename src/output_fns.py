@@ -25,11 +25,13 @@ class OutputLayer(FunctionDispatcher):
 
 class SoftmaxClassifier(OutputLayer):
     def __init__(self, transformer_layer_id, task_vocab_size, **params):
-        super(SoftmaxClassifier, self).__init__(transformer_layer_id, **params)
+        super(SoftmaxClassifier, self).__init__(
+            transformer_layer_id, task_vocab_size=task_vocab_size, **params
+        )
         self.dropout = L.Dropout(1 - self.hparams.mlp_dropout, noise_shape=[None, 1, self.hparams.sa_hidden_size])
         self.dense = L.Dense(task_vocab_size, activation=L.LeakyReLU(alpha=0.1))
 
-        self.loss = tf.keras.losses.CategoricalCrossentropy(
+        self.eval_loss = tf.keras.losses.CategoricalCrossentropy(
             from_logits=True,
             label_smoothing=self.hparams.label_smoothing,
             reduction=tf.keras.losses.Reduction.SUM,
@@ -51,13 +53,17 @@ class SoftmaxClassifier(OutputLayer):
 
     def loss(self, targets, output, mask):
         logits = output['scores']
-        n_labels = self.static_params['task_vocab_size']
-        targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
-        return self.loss(
-            y_pred=tf.reshape(logits, [-1, n_labels]),
-            y_true=tf.reshape(targets_onehot, [-1, n_labels]),
-            sample_weight=tf.reshape(mask, [-1])
-        )
+        # n_labels = self.static_params['task_vocab_size']
+        # targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
+        # return self.eval_loss(
+        #     y_pred=tf.reshape(logits, [-1, n_labels]),
+        #     y_true=tf.reshape(targets_onehot, [-1, n_labels]),
+        #     sample_weight=tf.reshape(mask, [-1])
+        # )
+
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
+        n_tokens = tf.reduce_sum(mask)
+        return tf.reduce_sum(cross_entropy * mask) / n_tokens
 
 
 class JointSoftmaxClassifier(OutputLayer):
@@ -118,7 +124,6 @@ class JointSoftmaxClassifier(OutputLayer):
         output.update(separate_output)
 
         return output
-
 
     def loss(self, targets, output, mask):
         logits = output['scores']
@@ -288,9 +293,8 @@ class SRLBilinear(OutputLayer):
         predictions = tf.cast(tf.argmax(srl_logits_transposed, axis=-1), tf.int32)  # [PRED_COUNT, SEQ_LEN] (role for each word for each predicate)
 
         # compute loss only on words given in srl_mask
-        srl_mask = kwargs.get('srl_mask')
-        if srl_mask is not None:
-            mask *= srl_mask
+        if 'srl_mask' in kwargs:
+            mask *= kwargs['srl_mask']
         # need to repeat each of these once for each target in the sentence
         mask_tiled = tf.reshape(tf.tile(mask, [1, batch_seq_len]), [batch_size, batch_seq_len, batch_seq_len])
         gather_mask = tf.gather_nd(mask_tiled, predicate_gather_indices)
@@ -362,12 +366,21 @@ class SRLBilinear(OutputLayer):
             # num_predicates = shape_list(srl_logits_transposed)[0]
             # if tf.equal(num_predicates, 0):
             #     return 1e5
-            srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
-            return self.eval_loss(
-                y_pred=tf.reshape(srl_logits_correct, [-1, num_labels]),
-                y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-                sample_weight=tf.reshape(gather_mask_correct, [-1])
+            # srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
+            # return self.eval_loss(
+            #     y_pred=tf.reshape(srl_logits_correct, [-1, num_labels]),
+            #     y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
+            #     sample_weight=tf.reshape(gather_mask_correct, [-1])
+            # )
+            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=tf.reshape(srl_logits_correct, [-1, num_labels]),
+                labels=tf.reshape(srl_targets, [-1])
             )
+            gather_mask_correct = tf.cast(gather_mask_correct, tf.float32)
+            n_tokens = tf.reduce_sum(gather_mask_correct)
+            return tf.reduce_sum(
+                cross_entropy * tf.reshape(gather_mask_correct, [-1])
+            ) / n_tokens
 
         return loss
 
