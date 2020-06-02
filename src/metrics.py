@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+from sklearn.metrics import f1_score
 
 import evaluation_fns_np
 import nn_utils
@@ -114,9 +115,13 @@ class ConllSrlEval(BaseMetric):
             srl_seq_len = tf.math.reduce_max(tf.reduce_sum(srl_mask, -1))
             # no need for extra padding, as WORD_SEQ_LEN is a length of a padded word sequence
             srl_mask = util.padded_to_full_word_mask(srl_mask, srl_seq_len, tf.shape(srl_mask)[1])
+
             str_predictions = util.take_word_start_tokens(str_predictions, srl_mask)
+            predicate_predictions = util.take_word_start_tokens(predicate_predictions, srl_mask)
             str_words = util.take_word_start_tokens(str_words, srl_mask)
+            mask = util.take_word_start_tokens(mask, srl_mask)
             str_targets = util.take_word_start_tokens(str_targets, srl_mask)
+            predicate_targets = util.take_word_start_tokens(predicate_targets, srl_mask)
             str_pos_predictions = util.take_word_start_tokens(str_pos_predictions, srl_mask)
             str_pos_targets = util.take_word_start_tokens(str_pos_targets, srl_mask)
 
@@ -186,6 +191,48 @@ class ConllParseEval(BaseMetric):
         return correct_count / total_count
 
 
+class ArgumentF1(BaseMetric):
+    name = "ArgumentF1"
+
+    def make_call(self, labels, outputs, mask, **kwargs):
+        reverse_maps = self.static_params['reverse_maps']
+        outputs = nn_utils.int_to_str_lookup_table(outputs, reverse_maps['srl'])
+        labels = nn_utils.int_to_str_lookup_table(labels, reverse_maps['srl'])
+
+        if 'srl_mask' in kwargs:
+            srl_mask = kwargs['srl_mask']
+            srl_seq_len = tf.math.reduce_max(tf.reduce_sum(srl_mask, -1))
+            # no need for extra padding, as WORD_SEQ_LEN is a length of a padded word sequence
+            srl_mask = util.padded_to_full_word_mask(srl_mask, srl_seq_len, tf.shape(srl_mask)[1])
+
+            labels = util.take_word_start_tokens(labels, srl_mask)
+            outputs = util.take_word_start_tokens(outputs, srl_mask)
+            mask = util.take_word_start_tokens(mask, srl_mask)
+
+        labels = labels.numpy().reshape(-1)
+        outputs = outputs.numpy().reshape(-1)
+        mask = mask.numpy().reshape(-1)
+
+        l_list, o_list = [], []
+        for l, o, m in zip(labels, outputs, mask):
+            if l != "*" and o != "*" and m:
+                l_list.append(l)
+                o_list.append(o)
+
+        self.update_state([l_list, o_list])
+
+    def result(self):
+        labels = []
+        outputs = []
+        for l, o in self.history:
+            labels.extend(l)
+            outputs.extend(o)
+
+        f1_macro = f1_score(labels, outputs, average='macro')
+        f1_micro = f1_score(labels, outputs, average='micro')
+        return [f1_macro, f1_micro]
+
+
 class ValLoss(BaseMetric):
     name = "ValLosses"
 
@@ -205,4 +252,5 @@ dispatcher = {
     'accuracy': Accuracy,
     'conll_srl_eval': ConllSrlEval,
     'conll_parse_eval': ConllParseEval,
+    'argument_f1': ArgumentF1,
 }
