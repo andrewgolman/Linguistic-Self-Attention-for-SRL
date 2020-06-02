@@ -87,18 +87,20 @@ def load_feat_label_idx_maps(data_config):
 
 
 def combine_attn_maps(layer_config, attention_config, task_config):
-  layer_task_config = {}
-  layer_attention_config = {}
-  for task_or_attn_name, layer in layer_config.items():
-    if task_or_attn_name in attention_config:
-      layer_attention_config[layer] = attention_config[task_or_attn_name]
-    elif task_or_attn_name in task_config:
-      if layer not in layer_task_config:
-        layer_task_config[layer] = {}
-      layer_task_config[layer][task_or_attn_name] = task_config[task_or_attn_name]
-    else:
-      fatal_error('No task or attention config "%s"' % task_or_attn_name)
-  return layer_task_config, layer_attention_config
+    layer_task_config = {}
+    layer_attention_config = {}
+    for task_or_attn_name, layer in layer_config.items():
+        if "_#" in task_or_attn_name:
+            task_or_attn_name = task_or_attn_name.split("_#")[0]
+        if task_or_attn_name in attention_config:
+            layer_attention_config[layer] = attention_config[task_or_attn_name]
+        elif task_or_attn_name in task_config:
+            if layer not in layer_task_config:
+                layer_task_config[layer] = {}
+            layer_task_config[layer][task_or_attn_name] = task_config[task_or_attn_name]
+        else:
+            fatal_error('No task or attention config "%s"' % task_or_attn_name)
+    return layer_task_config, layer_attention_config
 
 
 def list2dict(l, keys):
