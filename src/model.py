@@ -50,7 +50,7 @@ class LISAModel(tf.keras.models.Model):
         sa_hidden_size = self.layer_config['head_dim'] * self.layer_config['num_heads']
         self.hparams['sa_hidden_size'] = sa_hidden_size
 
-        if self.model_config['first_layer'] != 'embeddings':
+        if self.model_config['first_layer'] not in ['embeddings', 'precomputed']:
             self.first_layer_model = preprocessor_maps.load_model(self.model_config['first_layer'])
 
         self.dense1 = L.Dense(sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
@@ -147,46 +147,6 @@ class LISAModel(tf.keras.models.Model):
         return embeddings
 
     # RUNNING PART
-    def preprocess_batch(self, batch):
-        batch_shape = tf.shape(batch)
-        batch_size = batch_shape[0]
-        batch_seq_len = batch_shape[1]
-
-        features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
-
-        words = features[_MAIN_INPUT]
-
-        # for masking out padding tokens
-        mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)
-
-        # Extract named features from monolithic "features" input
-        features = {f: tf.multiply(tf.cast(mask, tf.int32), v) for f, v in features.items()}
-        tokens = features.copy()
-
-        # Extract named labels from monolithic "features" input, and mask them
-        labels = {}
-        for l, idx in self.label_idx_map.items():
-            these_labels = batch[:, :, idx[0]:idx[1]] if idx[1] != -1 else batch[:, :, idx[0]:]
-            these_labels_masked = tf.multiply(these_labels, tf.cast(tf.expand_dims(mask, -1), tf.int32))
-            # check if we need to mask another dimension
-            if idx[1] == -1:
-                last_dim = tf.shape(these_labels)[2]
-                this_mask = tf.where(tf.equal(these_labels_masked, constants.PAD_VALUE), 0, 1)
-                these_labels_masked = tf.multiply(these_labels_masked, this_mask)
-            else:
-                these_labels_masked = tf.squeeze(these_labels_masked, -1)
-            labels[l] = these_labels_masked
-
-        token_labels = labels
-        masks = {
-            'token_pad_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_begins_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_begins_full_mask': mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_pad_mask': mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
-        }
-        return features, masks, labels, token_labels, tokens
-
-    # RUNNING PART
     def compute_masks(self, words, seq_len, word_begins_mask=None):
         """
         :param words: [BATCH_SIZE, SEQ_LEN]
@@ -196,6 +156,7 @@ class LISAModel(tf.keras.models.Model):
             word_begins_mask: which tokens correspond to word begins, excluding pad words
             word_begins_full_mask: which tokens correspond to word begins, including pad words
             word_pad_mask: which words are not pad values
+            # see docs in util.py for a more detailed description
         """
         token_pad_mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)  # [BATCH_SIZE, SEQ_LEN]
 
@@ -207,6 +168,7 @@ class LISAModel(tf.keras.models.Model):
             word_seq_len = tf.reduce_max(tf.reduce_sum(word_begins_mask, 1))
             pad_len = util.get_padding_length(word_begins_mask, word_seq_len, seq_len)
             seq_len += pad_len
+
             token_pad_mask = util.pad_right(token_pad_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
             word_begins_mask = util.pad_right(word_begins_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
             word_begins_full_mask = util.padded_to_full_word_mask(
@@ -228,12 +190,13 @@ class LISAModel(tf.keras.models.Model):
         }
         return masks, pad_len, word_seq_len
 
-    def preprocess_batch_push(self, batch):
+    def preprocess_batch(self, batch):
         batch_shape = tf.shape(batch)
         seq_len = batch_shape[1]
 
         features = {f: batch[:, :, idx] for f, idx in self.feature_idx_map.items()}
 
+        # needs to be passed for padding purposes # todo
         words = features[_MAIN_INPUT]
         masks, pad_len, word_seq_len = self.compute_masks(words, seq_len, features.get('word_begin'))
         seq_len += pad_len
@@ -271,14 +234,14 @@ class LISAModel(tf.keras.models.Model):
         return features, masks, labels, token_labels, tokens
 
     def preprocess_features(self, inputs):
-        # Set up model inputs
+        """Set up transformer layer inputs"""
         features = []
-        for input_name in self.model_config['inputs']:  # word type and/or predicate
+        for input_name in self.model_config['inputs']:  # currently using: word type, predicate, word features
             if input_name == _MAIN_INPUT and self.model_config['first_layer'] != 'embeddings':
                 feat = self.first_layer_model(inputs[input_name])
                 features.append(
-                    feat[0] if self.model_config['first_layer'] != 'rubert' else feat
-                )  # todo check in preprocessors
+                    feat[0]  # if self.model_config['first_layer'] != 'rubert' else feat
+                )
             else:
                 features.append(
                     tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])
@@ -300,14 +263,12 @@ class LISAModel(tf.keras.models.Model):
             tokens Dict{word/word_type : [BATCH_SIZE, SEQ_LEN]}
         :return: predictions
         """
-        inputs, masks, labels, token_labels, tokens = self.preprocess_batch_push(batch)
-        # inputs, masks, labels, token_labels, tokens = self.preprocess_batch(batch)
+        inputs, masks, labels, token_labels, tokens = self.preprocess_batch(batch)
         features = self.preprocess_features(inputs)
         features = tf.stop_gradient(features) if not self.tune_first_layer else features
 
         outputs = {
             'mask': tf.cast(masks['word_pad_mask'], tf.float32),  # loss needs it
-            # 'mask': tf.cast(masks['word_begins_mask'], tf.float32),  # loss needs it
             'tokens': tokens,  # will be used in evaluation, srl.pl needs words  # todo or does it?
         }
         token_level_outputs = {}
@@ -320,7 +281,6 @@ class LISAModel(tf.keras.models.Model):
             features = self.transformer_layers[i]([features, masks['token_pad_mask'], token_level_outputs, token_labels])
 
             predict_features = util.take_word_start_tokens(features, masks['word_begins_full_mask'])
-            # predict_features = features
             # [BATCH_SIZE, WORD_LEN, SA_HID]
 
             # if normalization is done in layer_preprocess, then it should also be done
@@ -351,7 +311,6 @@ class LISAModel(tf.keras.models.Model):
 
         if self.custom_eval:
             self.update_metrics(labels, outputs, losses)
-            # self.update_metrics(token_labels, token_level_outputs, losses)
 
         predictions = self.outputs_to_predictions(outputs)
         if self.custom_eval:
