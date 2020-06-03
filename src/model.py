@@ -141,11 +141,12 @@ class LISAModel(tf.keras.models.Model):
 
         # Extract named features from monolithic "features" input
         features = {f: tf.multiply(
-            tf.cast(masks['token_pad_mask'], tf.int32), util.pad_right(v, pad_len)
+            tf.cast(masks['token_pad_mask'], tf.float32), util.pad_right(v, pad_len)
         ) for f, v in features.items()}  # values:[BATCH_SIZE, pad_SEQ_LEN]
 
         tokens = {
-            f: util.take_word_start_tokens(v, masks['word_begins_full_mask']) for f, v in features.items()
+            f: util.take_word_start_tokens(tf.cast(v, tf.int32), masks['word_begins_full_mask'])
+            for f, v in features.items() if "#" not in f  # todo: multifeature is checked here by the '#' symbol!
         }  # values:[BATCH_SIZE, WORD_LEN]
 
         # Extract named labels from monolithic "features" input, and mask them
@@ -153,6 +154,7 @@ class LISAModel(tf.keras.models.Model):
         token_labels = {}
         for l, idx in self.label_idx_map.items():
             these_labels = batch[:, :, idx[0]:idx[1]] if idx[1] != -1 else batch[:, :, idx[0]:]
+            these_labels = tf.cast(these_labels, tf.int32)
             # [BATCH_SIZE, WORD_LEN, label_len]
             these_labels = util.pad_right(these_labels, pad_len)
             this_mask = tf.where(tf.equal(these_labels, constants.PAD_VALUE), 0, 1)
@@ -177,16 +179,16 @@ class LISAModel(tf.keras.models.Model):
         for input_name in self.model_config['inputs']:  # currently using: word type, predicate, word features
             if input_name == _MAIN_INPUT and self.model_config['first_layer'] not in [
                                                             'embeddings', 'precomputed']:
-                feat = self.first_layer_model(inputs[input_name])
+                feat = self.first_layer_model(tf.cast(inputs[input_name], tf.int32))
                 features.append(
                     feat[0]  # if self.model_config['first_layer'] != 'rubert' else feat
                 )
             elif self.model_config['first_layer'] == 'precomputed':
                 features.append(inputs[input_name])
             else:
-                features.append(
-                    tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])
-                )
+                features.append(tf.nn.embedding_lookup(
+                        self.embeddings[input_name], tf.cast(inputs[input_name], tf.int32)
+                ))
 
         return tf.concat(features, axis=2)
 

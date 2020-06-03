@@ -13,20 +13,20 @@ def get_field_mapper(vocab_lookup_ops, data_config, feature_label_names):
                 if data_config[datum_name].get('type') == 'range':
                     idx = data_config[datum_name]['conll_idx']
                     if idx[1] == -1:
-                        mapped.append(
-                            vocab_lookup_ops[data_config[datum_name]['vocab']].lookup(row[:, i:])
-                        )
+                        mapped.append(tf.cast(
+                            vocab_lookup_ops[data_config[datum_name]['vocab']].lookup(row[:, i:]),
+                        tf.float32))
                     else:
                         last_idx = i + idx[1]
-                        mapped.append(
-                            vocab_lookup_ops[data_config[datum_name]['vocab']].lookup(row[:, i:last_idx])
-                        )
+                        mapped.append(tf.cast(
+                            vocab_lookup_ops[data_config[datum_name]['vocab']].lookup(row[:, i:last_idx]),
+                        tf.float32))
                 else:
-                    mapped.append(
+                    mapped.append(tf.cast(
                         tf.expand_dims(
                             vocab_lookup_ops[data_config[datum_name]['vocab']].lookup(row[:, i]), -1
-                        )
-                    )
+                        ),
+                        tf.float32))
             # elif 'tokenizer' in data_config[datum_name]:
             #     tokenizer = preprocessor_maps.tokenizers[data_config[datum_name]['tokenizer']]
             #     tokens = tf.map_fn(lambda s: tokenize(tokenizer, s), row[:, i], tf.int64)
@@ -36,10 +36,10 @@ def get_field_mapper(vocab_lookup_ops, data_config, feature_label_names):
             #         )
             #     )
             else:
-                mapped.append(tf.expand_dims(tf.strings.to_number(row[:, i], out_type=tf.int64), -1))
+                mapped.append(tf.expand_dims(tf.strings.to_number(row[:, i], out_type=tf.float32), -1))
 
         # this is where the order of features/labels in input gets defined
-        return tf.cast(tf.concat(mapped, axis=-1), tf.int32)
+        return tf.cast(tf.concat(mapped, axis=-1), tf.float32)
 
     return _mapper
 
@@ -67,14 +67,16 @@ def get_dataset(data_filenames, data_config, vocab_lookup_ops, batch_size, num_e
 
   with tf.device('/cpu:0'):
     dataset = create_dataset(data_filenames, data_config, vocab_lookup_ops)
-    dataset = dataset.cache()  # todo AG
+    dataset = dataset.cache()
 
     # do batching
-    dataset = dataset.apply(tf.data.experimental.bucket_by_sequence_length(element_length_func=lambda d: tf.shape(d)[0],
-                                                                      bucket_boundaries=bucket_boundaries,
-                                                                      bucket_batch_sizes=bucket_batch_sizes,
-                                                                      padded_shapes=tf.compat.v1.data.get_output_shapes(dataset),
-                                                                      padding_values=constants.PAD_VALUE))
+    dataset = dataset.apply(tf.data.experimental.bucket_by_sequence_length(
+        element_length_func=lambda d: tf.shape(d)[0],
+        bucket_boundaries=bucket_boundaries,
+        bucket_batch_sizes=bucket_batch_sizes,
+        padded_shapes=tf.compat.v1.data.get_output_shapes(dataset),
+        padding_values=float(constants.PAD_VALUE)
+    ))
 
     # shuffle and expand out epochs if training
     if shuffle:
