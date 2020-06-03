@@ -104,29 +104,6 @@ class LISAModel(tf.keras.models.Model):
                     )
                     self.custom_metrics.append(fn)
 
-    def get_embedding_table(self, name, embedding_dim, include_oov, pretrained_fname=None, num_embeddings=None):
-        """
-        AG: get table, check dimension, add oov and convert to tensor
-        """
-        if pretrained_fname:
-            pretrained_embeddings = util.load_pretrained_embeddings(pretrained_fname)
-            pretrained_num_embeddings, pretrained_embedding_dim = pretrained_embeddings.shape
-            if pretrained_embedding_dim != embedding_dim:
-                util.fatal_error("Pre-trained %s embedding dim does not match specified dim (%d vs %d)." %
-                                 (name, pretrained_embedding_dim, embedding_dim))
-            if num_embeddings and num_embeddings != pretrained_num_embeddings:
-                util.fatal_error("Number of pre-trained %s embeddings does not match specified "
-                                 "number of embeddings (%d vs %d)." % (name, pretrained_num_embeddings, num_embeddings))
-            embedding_table = tf.convert_to_tensor(pretrained_embeddings, dtype=tf.float32)
-        else:
-           embedding_table = tf.random.normal(shape=[num_embeddings, embedding_dim])
-
-        if include_oov:
-            oov_embedding = tf.random.normal(shape=[1, embedding_dim])
-            embedding_table = tf.concat([embedding_table, oov_embedding], axis=0)
-
-        return embedding_table
-
     def get_embeddings(self):
         # Create embeddings tables, loading pre-trained if specified
         embeddings = {}
@@ -135,61 +112,22 @@ class LISAModel(tf.keras.models.Model):
             if 'pretrained_embeddings' in embedding_map:
                 input_pretrained_embeddings = embedding_map['pretrained_embeddings']
                 include_oov = True
-                embedding_table = self.get_embedding_table(embedding_name, embedding_dim, include_oov,
-                                                         pretrained_fname=input_pretrained_embeddings)
+                embedding_table = self.get_embedding_table(
+                    embedding_name, embedding_dim, include_oov,
+                    pretrained_fname=input_pretrained_embeddings
+                )
             else:
                 num_embeddings = self.vocab.vocab_names_sizes[embedding_name]
                 include_oov = self.vocab.oovs[embedding_name]
-                embedding_table = self.get_embedding_table(embedding_name, embedding_dim, include_oov,
-                                                       num_embeddings=num_embeddings)
+                embedding_table = util.get_embedding_table(
+                    embedding_name, embedding_dim, include_oov,
+                    num_embeddings=num_embeddings
+                )
             embeddings[embedding_name] = embedding_table
             logging.log(logging.INFO, "Created embeddings for '%s'." % embedding_name)
         return embeddings
 
     # RUNNING PART
-    def compute_masks(self, words, seq_len, word_begins_mask=None):
-        """
-        :param words: [BATCH_SIZE, SEQ_LEN]
-        :param word_begins: [BATCH_SIZE, SEQ_LEN]
-        :returns
-            token_pad_mask: which tokens are not pad values
-            word_begins_mask: which tokens correspond to word begins, excluding pad words
-            word_begins_full_mask: which tokens correspond to word begins, including pad words
-            word_pad_mask: which words are not pad values
-            # see docs in util.py for a more detailed description
-        """
-        token_pad_mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)  # [BATCH_SIZE, SEQ_LEN]
-
-        if word_begins_mask is not None:
-            word_begins_mask = tf.where(
-                tf.equal(word_begins_mask, 0),
-                0, token_pad_mask
-            )
-            word_seq_len = tf.reduce_max(tf.reduce_sum(word_begins_mask, 1))
-            pad_len = util.get_padding_length(word_begins_mask, word_seq_len, seq_len)
-            seq_len += pad_len
-
-            token_pad_mask = util.pad_right(token_pad_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
-            word_begins_mask = util.pad_right(word_begins_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
-            word_begins_full_mask = util.padded_to_full_word_mask(
-                word_begins_mask, word_seq_len, seq_len)  # [BATCH_SIZE, pad_SEQ_LEN]
-            word_pad_mask = util.take_word_start_tokens(
-                token_pad_mask, word_begins_full_mask)  # [BATCH_SIZE, WORD_SEQ_LEN]
-        else:
-            pad_len = 0
-            word_seq_len = seq_len
-            word_begins_mask = token_pad_mask
-            word_pad_mask = token_pad_mask
-            word_begins_full_mask = tf.ones_like(word_begins_mask)
-
-        masks = {
-            'token_pad_mask': token_pad_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_begins_mask': word_begins_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_begins_full_mask': word_begins_full_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
-            'word_pad_mask': word_pad_mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
-        }
-        return masks, pad_len, word_seq_len
-
     def preprocess_batch(self, batch):
         batch_shape = tf.shape(batch)
         seq_len = batch_shape[1]
@@ -198,7 +136,7 @@ class LISAModel(tf.keras.models.Model):
 
         # needs to be passed for padding purposes # todo
         words = features[_MAIN_INPUT]
-        masks, pad_len, word_seq_len = self.compute_masks(words, seq_len, features.get('word_begin'))
+        masks, pad_len, word_seq_len = util.compute_masks(words, seq_len, features.get('word_begin'))
         seq_len += pad_len
 
         # Extract named features from monolithic "features" input

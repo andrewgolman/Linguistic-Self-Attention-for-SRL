@@ -3,6 +3,8 @@ import tensorflow as tf
 import sys
 import tensorflow.compat.v1.logging as logging
 
+import constants
+
 
 def fatal_error(message):
     tf.compat.v1.logging.error(message)
@@ -48,6 +50,30 @@ def load_pretrained_embeddings(pretrained_fname: str) -> np.array:
   pretrained_embeddings = np.array(pretrained_embeddings)
   pretrained_embeddings /= np.std(pretrained_embeddings)
   return pretrained_embeddings
+
+
+def get_embedding_table(name, embedding_dim, include_oov, pretrained_fname=None, num_embeddings=None):
+    """
+    get table, check dimension, add oov and convert to tensor
+    """
+    if pretrained_fname:
+        pretrained_embeddings = load_pretrained_embeddings(pretrained_fname)
+        pretrained_num_embeddings, pretrained_embedding_dim = pretrained_embeddings.shape
+        if pretrained_embedding_dim != embedding_dim:
+            fatal_error("Pre-trained %s embedding dim does not match specified dim (%d vs %d)." %
+                             (name, pretrained_embedding_dim, embedding_dim))
+        if num_embeddings and num_embeddings != pretrained_num_embeddings:
+            fatal_error("Number of pre-trained %s embeddings does not match specified "
+                             "number of embeddings (%d vs %d)." % (name, pretrained_num_embeddings, num_embeddings))
+        embedding_table = tf.convert_to_tensor(pretrained_embeddings, dtype=tf.float32)
+    else:
+        embedding_table = tf.random.normal(shape=[num_embeddings, embedding_dim])
+
+    if include_oov:
+        oov_embedding = tf.random.normal(shape=[1, embedding_dim])
+        embedding_table = tf.concat([embedding_table, oov_embedding], axis=0)
+
+    return embedding_table
 
 
 def load_transition_params(task_config, vocab):
@@ -207,3 +233,47 @@ def padded_to_full_word_mask(word_begins_mask, word_seq_len, seq_len):
         word_begins_mask,
         1
     )
+
+
+def compute_masks(words, seq_len, word_begins_mask=None):
+    """
+    :param words: [BATCH_SIZE, SEQ_LEN]
+    :param word_begins: [BATCH_SIZE, SEQ_LEN]
+    :returns
+        token_pad_mask: which tokens are not pad values
+        word_begins_mask: which tokens correspond to word begins, excluding pad words
+        word_begins_full_mask: which tokens correspond to word begins, including pad words
+        word_pad_mask: which words are not pad values
+        # see docs in util.py for a more detailed description
+    """
+    token_pad_mask = tf.where(tf.equal(words, constants.PAD_VALUE), 0, 1)  # [BATCH_SIZE, SEQ_LEN]
+
+    if word_begins_mask is not None:
+        word_begins_mask = tf.where(
+            tf.equal(word_begins_mask, 0),
+            0, token_pad_mask
+        )
+        word_seq_len = tf.reduce_max(tf.reduce_sum(word_begins_mask, 1))
+        pad_len = get_padding_length(word_begins_mask, word_seq_len, seq_len)
+        seq_len += pad_len
+
+        token_pad_mask = pad_right(token_pad_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
+        word_begins_mask = pad_right(word_begins_mask, pad_len)  # [BATCH_SIZE, pad_SEQ_LEN]
+        word_begins_full_mask = padded_to_full_word_mask(
+            word_begins_mask, word_seq_len, seq_len)  # [BATCH_SIZE, pad_SEQ_LEN]
+        word_pad_mask = take_word_start_tokens(
+            token_pad_mask, word_begins_full_mask)  # [BATCH_SIZE, WORD_SEQ_LEN]
+    else:
+        pad_len = 0
+        word_seq_len = seq_len
+        word_begins_mask = token_pad_mask
+        word_pad_mask = token_pad_mask
+        word_begins_full_mask = tf.ones_like(word_begins_mask)
+
+    masks = {
+        'token_pad_mask': token_pad_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+        'word_begins_mask': word_begins_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+        'word_begins_full_mask': word_begins_full_mask,  # [BATCH_SIZE, pad_SEQ_LEN]
+        'word_pad_mask': word_pad_mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
+    }
+    return masks, pad_len, word_seq_len
