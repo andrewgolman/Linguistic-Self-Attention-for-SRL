@@ -7,7 +7,7 @@ import constants
 
 
 def fatal_error(message):
-    tf.compat.v1.logging.error(message)
+    logging.error(message)
     sys.exit(1)
 
 
@@ -140,7 +140,6 @@ def task_list(task_config):
 
 
 # import tensorflow.python.training.tracking.tracking as tracking
-
 # https://github.com/tensorflow/tensorflow/blob/c3973c78f03c50d8514c14c2866ab30e708aea24/tensorflow/python/training/tracking/tracking.py
 # class NotTrackableDict(tracking.NotTrackable, dict):
 class NotTrackableDict(dict):
@@ -277,3 +276,21 @@ def compute_masks(words, seq_len, word_begins_mask=None):
         'word_pad_mask': word_pad_mask,  # [BATCH_SIZE, WORD_SEQ_LEN]
     }
     return masks, pad_len, word_seq_len
+
+
+def parse_multifeatures(data_config, model_config):
+    for field in data_config.copy():
+        if data_config[field].get("multifeature"):
+            frange = data_config[field]['conll_idx']
+            for i in range(frange[0], frange[1]):
+                s = field + "_#{}".format(i - frange[0] + 1)
+                data_config[s] = data_config[field].copy()
+                data_config[s]['conll_idx'] = i
+                if field in model_config['inputs']:
+                   model_config['inputs'].append(s)
+
+            if field in model_config['inputs']:
+                model_config['inputs'].remove(field)
+            del data_config[field]
+
+    return data_config, model_config

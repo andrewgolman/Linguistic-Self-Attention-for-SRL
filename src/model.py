@@ -112,7 +112,7 @@ class LISAModel(tf.keras.models.Model):
             if 'pretrained_embeddings' in embedding_map:
                 input_pretrained_embeddings = embedding_map['pretrained_embeddings']
                 include_oov = True
-                embedding_table = self.get_embedding_table(
+                embedding_table = util.get_embedding_table(
                     embedding_name, embedding_dim, include_oov,
                     pretrained_fname=input_pretrained_embeddings
                 )
@@ -175,11 +175,14 @@ class LISAModel(tf.keras.models.Model):
         """Set up transformer layer inputs"""
         features = []
         for input_name in self.model_config['inputs']:  # currently using: word type, predicate, word features
-            if input_name == _MAIN_INPUT and self.model_config['first_layer'] != 'embeddings':
+            if input_name == _MAIN_INPUT and self.model_config['first_layer'] not in [
+                                                            'embeddings', 'precomputed']:
                 feat = self.first_layer_model(inputs[input_name])
                 features.append(
                     feat[0]  # if self.model_config['first_layer'] != 'rubert' else feat
                 )
+            elif self.model_config['first_layer'] == 'precomputed':
+                features.append(inputs[input_name])
             else:
                 features.append(
                     tf.nn.embedding_lookup(self.embeddings[input_name], inputs[input_name])

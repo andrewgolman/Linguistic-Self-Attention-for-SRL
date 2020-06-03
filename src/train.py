@@ -70,6 +70,7 @@ def main():
     layer_config = train_utils.load_json_configs(args.layer_configs)
     attention_config = train_utils.load_json_configs(args.attention_configs)
 
+    data_config, model_config = util.parse_multifeatures(data_config, model_config)
     # Combine layer, task and layer, attention maps
     # todo save these maps in save_dir
     layer_task_config, layer_attention_config = util.combine_attn_maps(layer_config, attention_config, task_config)
@@ -141,8 +142,6 @@ def main():
     model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
     model(batch[0])
 
-    if args.tune_first_layer:
-        model.unfreeze_first_layer()
     if args.checkpoint:
         # todo AG
         start_epoch = int(args.checkpoint.split("_")[-1])
@@ -152,7 +151,10 @@ def main():
         start_epoch = 0
 
     model.summary()
-    model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
+    # model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
+
+    if args.tune_first_layer:
+        model.unfreeze_first_layer()
 
     lr_schedule_callback = tf.keras.callbacks.LearningRateScheduler(
         train_utils.learning_rate_scheduler(hparams, start_epoch=start_epoch),
