@@ -2,7 +2,7 @@ import tensorflow as tf
 import nn_utils
 import tensorflow.keras.layers as L
 from base_fns import FunctionDispatcher
-from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood
+from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood, viterbi_decode
 from opennmt.utils.misc import shape_list
 
 
@@ -304,7 +304,10 @@ class SRLBilinear(OutputLayer):
         if transition_params is not None and self.in_eval_mode:
             num_predicates = shape_list(srl_logits_transposed)[0]
             if tf.not_equal(num_predicates, 0):
-                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+                # predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+                unstacked_logits = tf.unstack(srl_logits_transposed, axis=0)
+                unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
+                predictions = tf.stack(unstacked_predictions)
 
         # todo AG clear the mess
         output = {
@@ -383,6 +386,28 @@ class SRLBilinear(OutputLayer):
             ) / n_tokens
 
         return loss
+
+
+class SRLArgDetection(OutputLayer):
+    def __init__(self, transformer_layer_id, **params):
+        params['task_vocab_size'] = 3
+        super(SRLArgDetection, self).__init__(transformer_layer_id, **params)
+
+        self.srl_bilinear = SRLBilinear(transformer_layer_id, **params)
+
+        forward_srl_map = {v: k for k, v in self.static_params['reverse_maps']['srl']}
+        out_label = forward_srl_map["O"]
+        v_label = forward_srl_map["B-V"]
+        in_label = forward_srl_map["B-ARG0"] if "B-ARG0" in forward_srl_map else forward_srl_map["B-агенс"]  # todo to config
+        self.mapper = lambda x: x if x in [out_label, v_label] else in_label
+
+    def make_call(self, *args, **kwargs):
+        return self.srl_bilinear.make_call(*args, **kwargs)
+
+    def loss(self, targets, output, mask):
+        targets = tf.map_fn(self.map, targets)
+        output = tf.map_fn(self.map, output)
+        return self.srl_bilinear.loss(targets, output, mask)
 
 
 dispatcher = {
