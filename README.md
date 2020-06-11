@@ -1,8 +1,10 @@
 # Linguistic-Self-Attention-for-SRL
 
+Work in progress
+
 #### This work is based on the work by @strubell and [this repo](https://github.com/strubell/LISA). 
 
-[Original article](https://arxiv.org/abs/1804.08199)
+[Original paper](https://arxiv.org/abs/1804.08199)
 
 
 #### Data setup:
@@ -51,19 +53,20 @@ parameters into layer-specific format.
 5. attention_fns.py implements outputs that will be used in
 further transformer layers
 
-
-#### Differences from the original article
+#### Differences from the original paper
 - used transformer implementation by OpenNMT. This implementation has
 2 dense layers instead of 3, so the size of hidden layer has been
 increased. 
-- attention is normalized when being copied from another layer
 - on inference SRL loss is calculated over correctly predicted predicates.
 This might be used on the late stages of training
 
 #### Current todos:
-- add masks for training on Russian Framebank
-- generate features with large models and save them prior to training phase
+- add more masks for training on Russian Framebank
+- add all data generation code
+- write proper docs on configs
 - evaluate within the graph
 
 #### Notes:
 - long sentences are also deleted from training dataset to save some gpu memory...
+- if weird errors appear, it might be config issues: look at todos and code docs
+to see how to write them. More docs are coming
