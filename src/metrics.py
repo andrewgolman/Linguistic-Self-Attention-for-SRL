@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from sklearn.metrics import f1_score
+from collections import defaultdict
 
 import evaluation_fns_np
 import nn_utils
@@ -191,8 +192,8 @@ class ConllParseEval(BaseMetric):
         return correct_count / total_count
 
 
-class ArgumentF1(BaseMetric):
-    name = "ArgumentF1"
+class LabelF1(BaseMetric):
+    name = "LabelF1"
 
     def make_call(self, labels, outputs, mask, **kwargs):
         reverse_maps = self.static_params['reverse_maps']
@@ -233,6 +234,34 @@ class ArgumentF1(BaseMetric):
         return [f1_macro, f1_micro]
 
 
+class ArgumentDetectionF1(BaseMetric):
+    """
+    F1 on argument detection, regardless of classification
+    """
+    name = "ArgumentDetectionF1"
+
+    def __init__(self, *args, **kwargs):
+        super(ArgumentDetectionF1, self).__init__(*args, **kwargs)
+        self.conll_srl = ConllSrlEval(*args, **kwargs)
+
+        forward_srl_map = {v: k for k, v in self.static_params['reverse_maps']['srl']}
+        out_label = forward_srl_map["O"]
+        v_label = forward_srl_map["B-V"]
+        in_label = forward_srl_map["B-ARG0"] if "B-ARG0" in forward_srl_map else forward_srl_map["B-агенс"]  # todo to config
+        self.mapper = lambda x: x if x in [out_label, v_label] else in_label
+
+    def make_call(self, labels, outputs, *args, **kwargs):
+        labels = tf.map_fn(self.mapper, labels)
+        outputs = tf.map_fn(self.mapper, outputs)
+        self.conll_srl.make_call(labels, outputs, *args, **kwargs)
+
+    def reset_states(self):
+        self.conll_srl.reset_states()
+
+    def result(self):
+        return self.conll_srl.result()
+
+
 class ValLoss(BaseMetric):
     name = "ValLosses"
 
@@ -252,5 +281,6 @@ dispatcher = {
     'accuracy': Accuracy,
     'conll_srl_eval': ConllSrlEval,
     'conll_parse_eval': ConllParseEval,
-    'argument_f1': ArgumentF1,
+    'label_f1': LabelF1,
+    'arg_detection_f1': ArgumentDetectionF1,
 }
