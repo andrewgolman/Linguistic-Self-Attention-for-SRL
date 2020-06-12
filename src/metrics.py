@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_recall_fscore_support
 from collections import defaultdict
 
 import evaluation_fns_np
@@ -234,6 +234,26 @@ class LabelF1(BaseMetric):
         return [f1_macro, f1_micro]
 
 
+class BinaryF1(BaseMetric):
+    name = "BinaryF1"
+
+    def make_call(self, labels, outputs, mask, **kwargs):
+        labels = labels.numpy().reshape(-1)
+        outputs = outputs.numpy().reshape(-1)
+
+        self.update_state([labels, outputs])
+
+    def result(self):
+        labels = []
+        outputs = []
+        for l, o in self.history:
+            labels.extend(l)
+            outputs.extend(o)
+
+        f1 = precision_recall_fscore_support(labels, outputs)
+        return f1
+
+
 class ArgumentDetectionF1(BaseMetric):
     """
     F1 on argument detection, regardless of classification
@@ -283,4 +303,5 @@ dispatcher = {
     'conll_parse_eval': ConllParseEval,
     'label_f1': LabelF1,
     'arg_detection_f1': ArgumentDetectionF1,
+    'binary_f1': BinaryF1,
 }
