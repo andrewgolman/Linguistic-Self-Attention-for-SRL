@@ -88,6 +88,7 @@ class LISAModel(tf.keras.models.Model):
                     task_vocab_size=task_vocab_size,
                     joint_lookup_maps=self.vocab.joint_label_lookup_maps,
                     transition_params=transition_stats.get(task),
+                    v_label=self.vocab.vocab_maps['srl']['B-V'],  # todo AG
                     hparams=self.hparams,
                 )
 
@@ -184,7 +185,9 @@ class LISAModel(tf.keras.models.Model):
                     feat[0]  # if self.model_config['first_layer'] != 'rubert' else feat
                 )
             elif self.model_config['first_layer'] == 'precomputed':
-                features.append(inputs[input_name])
+                features.append(
+                    tf.expand_dims(inputs[input_name], axis=-1)
+                )
             else:
                 features.append(tf.nn.embedding_lookup(
                         self.embeddings[input_name], tf.cast(inputs[input_name], tf.int32)

@@ -4,7 +4,7 @@ import tensorflow.keras.layers as L
 from base_fns import FunctionDispatcher
 from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood, viterbi_decode
 from opennmt.utils.misc import shape_list
-
+from opennmt.layers.position import SinusoidalPositionEncoder
 
 class OutputLayer(FunctionDispatcher):
     def __init__(self, transformer_layer_id, task_map, **params):
@@ -304,10 +304,10 @@ class SRLBilinear(OutputLayer):
         if transition_params is not None and self.in_eval_mode:
             num_predicates = shape_list(srl_logits_transposed)[0]
             if tf.not_equal(num_predicates, 0):
-                # predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
-                unstacked_logits = tf.unstack(srl_logits_transposed, axis=0)
-                unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
-                predictions = tf.stack(unstacked_predictions)
+                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
+                # unstacked_logits = tf.unstack(srl_logits_transposed, axis=0)
+                # unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
+                # predictions = tf.stack(unstacked_predictions)
 
         output = {
             'predictions': predictions,
@@ -397,17 +397,30 @@ class SRLArgDetection(OutputLayer):
         self.dense1 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
         self.dense2 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
-        self.loss_bias = 0
+        self.loss_bias = 1.
+        self.mask_th = 0.5
 
-    def make_call(self, data, srl_mask):
+        self.v_label = self.static_params['v_label']
+        self.positional_encoder = SinusoidalPositionEncoder()
+
+    def make_call(self, data, srl_mask, srl_labels):
         features, mask = data
         # predictions will be made by (true mask + random mask)
         if not self.in_eval_mode:
-            # enhanced_srl_mask = tf.where(tf.random.uniform(tf.shape(srl_mask)) > 0.9, 1, srl_mask)
-            # mask *= enhanced_srl_mask
-            enhanced_srl_mask = mask
+            enhanced_srl_mask = tf.where(tf.random.uniform(tf.shape(srl_mask)) > self.mask_th, 1, srl_mask)
+            mask *= enhanced_srl_mask
+            # enhanced_srl_mask = mask
         else:
             enhanced_srl_mask = mask
+
+        features = self.positional_encoder(features)  # BATCH_SIZE, SEQ_LEN, HID
+
+        # todo AG expected only one predicate per sentence!
+        predicate_ind = tf.where(srl_labels[:, :, 0] == self.v_label)
+        predicate_features = tf.gather_nd(features, predicate_ind)  # BATCH_SIZE, HID
+        predicate_features = tf.expand_dims(predicate_features, axis=1)
+        predicate_features = tf.repeat(predicate_features, shape_list(features)[1], axis=1)
+        features = tf.concat([features, predicate_features], axis=-1)
 
         features = self.dense1(features)
         features = self.dense2(features)
