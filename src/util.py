@@ -279,18 +279,23 @@ def compute_masks(words, seq_len, word_begins_mask=None):
 
 
 def parse_multifeatures(data_config, model_config):
-    for field in data_config.copy():
+    new_data_config = {}
+
+    # we need to keep the order of fields, see
+    # load_feat_label_idx_maps and dataset loading
+    for field in data_config:
         if data_config[field].get("multifeature"):
             frange = data_config[field]['conll_idx']
             for i in range(frange[0], frange[1]):
                 s = field + "_#{}".format(i - frange[0] + 1)
-                data_config[s] = data_config[field].copy()
-                data_config[s]['conll_idx'] = i
+                new_data_config[s] = data_config[field].copy()
+                new_data_config[s]['conll_idx'] = i
                 if field in model_config['inputs']:
                    model_config['inputs'].append(s)
 
             if field in model_config['inputs']:
                 model_config['inputs'].remove(field)
-            del data_config[field]
+        else:
+            new_data_config[field] = data_config[field]
 
-    return data_config, model_config
+    return new_data_config, model_config
