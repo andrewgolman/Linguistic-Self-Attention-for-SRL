@@ -11,6 +11,9 @@
       "params": {
         "srl_mask": {
           "label": "srl_mask"
+        },
+        "srl_labels": {
+          "label": "srl"
         }
       }
     },
