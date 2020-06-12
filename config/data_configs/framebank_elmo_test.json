@@ -72,12 +72,12 @@
   },
   "word_feature": {
     "multifeature": true,
-    "feature_count": 1000,
-    "conll_idx": [14, 1038],
+    "feature_count": 100,
+    "conll_idx": [14, 16],
     "feature": true
   },
   "srl": {
-    "conll_idx": [1038, -1],
+    "conll_idx": [16, -1],
     "type": "range",
     "label": true,
     "vocab": "srl",
