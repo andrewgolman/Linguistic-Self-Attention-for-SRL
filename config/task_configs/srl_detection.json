@@ -1,0 +1,34 @@
+{
+  "srl_mask": {
+    "penalty": 1.0,
+    "viterbi": false,
+    "token_take_mask": {
+      "layer": "joint_pos_predicate",
+      "output": "predicate_predictions"
+    },
+    "output_fn": {
+      "name": "srl_arg_detection",
+      "params": {
+        "srl_mask": {
+          "label": "srl_mask"
+        }
+      }
+    },
+    "eval_fns": {
+      "binary_f1": {
+        "name": "binary_f1",
+        "params": {
+          "reverse_maps": {
+            "reverse_maps": [
+              "srl"
+            ]
+          },
+          "targets": {
+            "layer": "srl_mask",
+            "output": "targets"
+          }
+        }
+      }
+    }
+  }
+}

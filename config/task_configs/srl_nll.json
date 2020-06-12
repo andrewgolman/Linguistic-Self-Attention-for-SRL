@@ -58,6 +58,26 @@
           },
           "pos_targets": {
             "label": "gold_pos"
+          },
+          "srl_mask": {
+            "label": "srl_mask"
+          }
+        }
+      },
+      "label_f1": {
+        "name": "label_f1",
+        "params": {
+          "reverse_maps": {
+            "reverse_maps": [
+              "srl"
+            ]
+          },
+          "targets": {
+            "layer": "srl",
+            "output": "targets"
+          },
+          "srl_mask": {
+            "label": "srl_mask"
           }
         }
       }
