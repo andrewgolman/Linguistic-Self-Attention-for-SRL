@@ -309,7 +309,6 @@ class SRLBilinear(OutputLayer):
                 unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
                 predictions = tf.stack(unstacked_predictions)
 
-        # todo AG clear the mess
         output = {
             'predictions': predictions,
             'scores': srl_logits_transposed,  # [PRED_COUNT, SEQ_LEN, bilin_output_size]
@@ -375,6 +374,7 @@ class SRLBilinear(OutputLayer):
             #     y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
             #     sample_weight=tf.reshape(gather_mask_correct, [-1])
             # )
+            return 0  # !!!
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=tf.reshape(srl_logits_correct, [-1, num_labels]),
                 labels=tf.reshape(srl_targets, [-1])
@@ -390,28 +390,48 @@ class SRLBilinear(OutputLayer):
 
 class SRLArgDetection(OutputLayer):
     def __init__(self, transformer_layer_id, **params):
-        params['task_vocab_size'] = 3
+        params['task_vocab_size'] = 2
         super(SRLArgDetection, self).__init__(transformer_layer_id, **params)
 
-        self.srl_bilinear = SRLBilinear(transformer_layer_id, **params)
+        self.classifier = SoftmaxClassifier(transformer_layer_id, **params)
+        self.dense1 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.dense2 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
-        forward_srl_map = {v: k for k, v in self.static_params['reverse_maps']['srl']}
-        out_label = forward_srl_map["O"]
-        v_label = forward_srl_map["B-V"]
-        in_label = forward_srl_map["B-ARG0"] if "B-ARG0" in forward_srl_map else forward_srl_map["B-агенс"]  # todo to config
-        self.mapper = lambda x: x if x in [out_label, v_label] else in_label
+        self.loss_bias = 0
 
-    def make_call(self, *args, **kwargs):
-        return self.srl_bilinear.make_call(*args, **kwargs)
+    def make_call(self, data, srl_mask):
+        features, mask = data
+        # predictions will be made by (true mask + random mask)
+        if not self.in_eval_mode:
+            # enhanced_srl_mask = tf.where(tf.random.uniform(tf.shape(srl_mask)) > 0.9, 1, srl_mask)
+            # mask *= enhanced_srl_mask
+            enhanced_srl_mask = mask
+        else:
+            enhanced_srl_mask = mask
+
+        features = self.dense1(features)
+        features = self.dense2(features)
+        res = self.classifier.make_call([features, mask])
+        res['enhanced_srl_mask'] = enhanced_srl_mask
+        return res
 
     def loss(self, targets, output, mask):
-        targets = tf.map_fn(self.map, targets)
-        output = tf.map_fn(self.map, output)
-        return self.srl_bilinear.loss(targets, output, mask)
+        # targets == srl_mask
+        if not self.in_eval_mode:
+            mask *= tf.cast(output['enhanced_srl_mask'], mask.dtype)
+
+        logits = output['scores']
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
+        n_tokens = tf.reduce_sum(mask)
+        return tf.reduce_sum(cross_entropy * mask +
+                             self.loss_bias * cross_entropy * tf.cast(targets, tf.float32)) / n_tokens
+
+        # return self.classifier.loss(targets, output, mask)
 
 
 dispatcher = {
   'srl_bilinear': SRLBilinear,
+  'srl_arg_detection': SRLArgDetection,
   'joint_softmax_classifier': JointSoftmaxClassifier,
   'softmax_classifier': SoftmaxClassifier,
   'parse_bilinear': ParseBilinear,
