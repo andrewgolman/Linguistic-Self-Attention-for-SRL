@@ -374,7 +374,7 @@ class SRLBilinear(OutputLayer):
             #     y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
             #     sample_weight=tf.reshape(gather_mask_correct, [-1])
             # )
-            return 0  # !!!
+            # return 0  # !!!
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=tf.reshape(srl_logits_correct, [-1, num_labels]),
                 labels=tf.reshape(srl_targets, [-1])
@@ -439,7 +439,38 @@ class SRLArgDetection(OutputLayer):
         return tf.reduce_sum(cross_entropy * mask +
                              self.loss_bias * cross_entropy * tf.cast(targets, tf.float32)) / n_tokens
 
-        # return self.classifier.loss(targets, output, mask)
+
+class SRLConcatClassifier(OutputLayer):
+    def __init__(self, transformer_layer_id, **params):
+        super(SRLConcatClassifier, self).__init__(transformer_layer_id, **params)
+
+        self.classifier = SoftmaxClassifier(transformer_layer_id, **params)
+        self.dense1 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.dense2 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.positional_encoder = SinusoidalPositionEncoder()
+        self.v_label = self.static_params['v_label']
+
+    def make_call(self, data, srl_labels, srl_mask):
+        features, mask = data
+        mask *= srl_mask
+        features = self.positional_encoder(features)  # BATCH_SIZE, SEQ_LEN, HID
+
+        # todo AG expected only one predicate per sentence!
+        predicate_ind = tf.where(srl_labels[:, :, 0] == self.v_label)
+        predicate_features = tf.gather_nd(features, predicate_ind)  # BATCH_SIZE, HID
+        predicate_features = tf.expand_dims(predicate_features, axis=1)
+        predicate_features = tf.repeat(predicate_features, shape_list(features)[1], axis=1)
+        features = tf.concat([features, predicate_features], axis=-1)
+
+        features = self.dense1(features)
+        features = self.dense2(features)
+        res = self.classifier.make_call([features, mask])
+        res['srl_mask'] = srl_mask
+        return res
+
+    def loss(self, targets, output, mask):
+        mask *= tf.cast(output['srl_mask'], tf.float32)
+        return self.classifier.loss(targets[:, :, 0], output, mask)
 
 
 dispatcher = {
@@ -449,4 +480,5 @@ dispatcher = {
   'softmax_classifier': SoftmaxClassifier,
   'parse_bilinear': ParseBilinear,
   'conditional_bilinear': ConditionalBilinear,
+  'srl_concat': SRLConcatClassifier,
 }
