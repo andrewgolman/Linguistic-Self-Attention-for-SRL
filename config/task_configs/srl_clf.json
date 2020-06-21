@@ -1,5 +1,5 @@
 {
-  "srl_mask": {
+  "srl": {
     "penalty": 1.0,
     "viterbi": false,
     "token_take_mask": {
@@ -7,7 +7,7 @@
       "output": "predicate_predictions"
     },
     "output_fn": {
-      "name": "srl_arg_detection",
+      "name": "srl_concat",
       "params": {
         "srl_mask": {
           "label": "srl_mask"
@@ -18,8 +18,8 @@
       }
     },
     "eval_fns": {
-      "binary_f1": {
-        "name": "binary_f1",
+      "label_f1": {
+        "name": "label_f1",
         "params": {
           "reverse_maps": {
             "reverse_maps": [
@@ -27,11 +27,11 @@
             ]
           },
           "targets": {
-            "layer": "srl_mask",
+            "layer": "srl",
             "output": "targets"
           },
-          "srl_labels": {
-            "label": "srl"
+          "srl_mask": {
+            "label": "srl_mask"
           }
         }
       }

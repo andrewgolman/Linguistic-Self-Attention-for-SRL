@@ -15,7 +15,7 @@
    "prepost_dropout": 0.7,
    "moving_average_decay": 0.0,
    "gradient_clip_norm": 5.0,
-   "learning_rate": 0.04,
+   "learning_rate": 0.02,
    "decay_rate": 1.5,
    "warmup_steps": 4000,
    "beta1": 0.9,
@@ -24,8 +24,8 @@
    "use_nesterov": true,
 
    "train_epochs": 100,
-   "steps_per_epoch": 500,
-   "batch_size": 64,
+   "steps_per_epoch": 1000,
+   "batch_size": 32,
    "validation_batch_size": 64
 
  },

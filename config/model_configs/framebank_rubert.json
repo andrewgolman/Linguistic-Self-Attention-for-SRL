@@ -1,10 +1,10 @@
 {
  "first_layer": "rubert",
- "predicate_mlp_size": 100,
- "role_mlp_size": 100,
- "predicate_pred_mlp_size": 100,
- "class_mlp_size": 50,
- "attn_mlp_size": 250,
+ "predicate_mlp_size": 200,
+ "role_mlp_size": 200,
+ "predicate_pred_mlp_size": 200,
+ "class_mlp_size": 100,
+ "attn_mlp_size": 500,
  "hparams": {
    "label_smoothing": 0.1,
    "input_dropout": 0.85,
@@ -24,18 +24,24 @@
    "use_nesterov": true,
 
    "train_epochs": 100,
-   "steps_per_epoch": 200,
-   "batch_size": 32,
+   "steps_per_epoch": 500,
+   "batch_size": 64,
    "validation_batch_size": 64
 
  },
  "layers": {
    "type": "transformer",
-   "num_heads": 4,
+   "num_heads": 8,
    "head_dim": 24,
-   "ff_hidden_size": 384
+   "ff_hidden_size": 768
  },
  "embeddings": {
+   "gold_pos": {
+      "embedding_dim": 24
+    },
+    "parse_label": {
+      "embedding_dim": 24
+    }
  },
  "inputs": [
    "word_type"

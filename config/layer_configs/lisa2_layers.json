@@ -5,5 +5,9 @@
   "parse_label": 4,
   "parse_label_attention": 5,
   "parse_attention": 5,
+  "pos_attention_#2": 7,
+  "parse_attention_#2": 9,
+  "parse_label_attention_#2": 9,
+  "parse_attention_#3": 10,
   "srl": 11
 }

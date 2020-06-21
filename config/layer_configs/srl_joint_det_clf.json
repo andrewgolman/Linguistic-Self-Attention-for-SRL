@@ -1,0 +1,9 @@
+{
+  "gold_pos": 2,
+  "pos_attention": 3,
+  "parse_head": 4,
+  "parse_label": 4,
+  "parse_attention": 5,
+  "srl_mask": 5,
+  "srl": 7
+}
