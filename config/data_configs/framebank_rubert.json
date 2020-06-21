@@ -73,11 +73,11 @@
   "word_feature": {
     "multifeature": true,
     "feature_count": 768,
-    "conll_idx": [14, 782],
+    "conll_idx": [13, 781],
     "feature": true
   },
   "srl": {
-    "conll_idx": [782, -1],
+    "conll_idx": [781, -1],
     "type": "range",
     "label": true,
     "vocab": "srl",
