@@ -1,7 +1,5 @@
 # Linguistic-Self-Attention-for-SRL
 
-Work in progress
-
 #### This work is based on the work by @strubell and [this repo](https://github.com/strubell/LISA). 
 
 [Original paper](https://arxiv.org/abs/1804.08199)
@@ -9,17 +7,22 @@ Work in progress
 
 #### Data setup:
 
+- Get CONLL-2012 data.
+
 - Clone [this repo](https://github.com/iesl/conll2012-preprocess-parsing/tree/master/bin).
 
-- Get CONLL-12 data. (some additional steps? - check out a readme there) Run bin/pp12.sh in the repo directory.
+- Run bin/pp12.sh in the IESL repo directory. (this step might not be accurate, but you can see which scripts you need within pp12.sh or IESL readme)
 
-- Run bin/prepare_data.sh [conll12 preprocessed files directory] 
+- Run `bin/prepare_data.sh [conll12 preprocessed files directory]` 
 
-- Download GloVe embeddings
+- If you want to run the model on English GloVe embeddings, you may download them:
 ```
 wget -P embeddings http://nlp.stanford.edu/data/glove.6B.zip
 unzip -j embeddings/glove.6B.zip glove.6B.100d.txt -d embeddings
 ```
+
+- If you want to run the model on FastText embeddings, you may download them at 
+https://fasttext.cc/docs/en/crawl-vectors.html
 
 #### Requirements:
 
@@ -34,11 +37,37 @@ pip install -r requirements.txt
 
 #### Running:
 
-[change configs inside the scripts if needed]
 ```
-bin/train.sh
-bin/test.sh [checkpoint (todo)]
+python src/train.py \
+--data [your data path config]
+--config [your global config]
+--save_dir [directory to save models, vocabs and metrics]
+--eval_every [int]
+--save_every [int]
 ```
+
+Data path config is a following .json file:
+```
+{
+    "train": ["file1", "file2", ...],
+    "dev": ["file1", "file2", ...],
+    "test": ["file1", "file2", ...],  # not required
+    "transition_stats": "file"  # required if crf/viterbi decoding is used
+}
+```
+
+Global config:
+```
+{
+  "data_configs": ["config_file1", "config_file2", ...],
+  "model_configs": ["config_file1", "config_file2", ...],
+  "task_configs": ["config_file1", "config_file2", ...],
+  "layer_configs": ["config_file1", "config_file2", ...],
+  "attention_configs": ["config_file1", "config_file2", ...],
+}
+```
+
+Find out more about config files in config/README.md.
 
 #### Code reading starter pack
 1. model.py has main logic, as usual
@@ -61,12 +90,5 @@ increased.
 This might be used on the late stages of training
 
 #### Current todos:
-- add more masks for training on Russian Framebank
 - add all data generation code
-- write proper docs on configs
 - evaluate within the graph
-
-#### Notes:
-- long sentences are also deleted from training dataset to save some gpu memory...
-- if weird errors appear, it might be config issues: look at todos and code docs
-to see how to write them. More docs are coming

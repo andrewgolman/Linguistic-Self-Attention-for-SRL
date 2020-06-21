@@ -4,8 +4,10 @@ import transformers
 
 tokenizers = {
     'albert': transformers.AlbertTokenizer.from_pretrained('albert-base-v1'),
+    'roberta': transformers.RobertaTokenizer.from_pretrained('roberta-base'),
     't5': transformers.T5Tokenizer.from_pretrained('t5-base'),
     'bert': transformers.BertTokenizer.from_pretrained('bert-base-cased'),
+    'rubert': transformers.BertTokenizer.from_pretrained("pretrained/rubert_cased_L-12_H-768_A-12_pt")  # load it from deeppavlov
 }
 
 
@@ -36,21 +38,27 @@ def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
     with open(input_file) as fin, open(output_file, "w") as fout:
         sentences = set()
         lines = []
-        ignored = 0
+        ignored_length = 0
+        ignored_pred = 0
+        accepted = 0
         total = 0
         token_count = 0
 
         for line in fin:
             if not line.strip():
                 total += 1
-                if token_count < 100 and len(lines[0].split()) > 14 and get_sentence(lines) not in sentences:
+                if get_sentence(lines) in sentences:
+                    pass
+                elif token_count >= 100:
+                    ignored_length += 1
+                elif len(lines[0].split()) <= 14:
+                    ignored_pred += 1
+                else:
+                    accepted += 1
                     sentences.add(get_sentence(lines))
                     for s in lines:
                         print(s, file=fout)
                     print("", file=fout)
-                else:
-                    # print(len(lines), len(lines[0].split()), get_sentence(lines) in sentences)
-                    ignored += 1
                 lines = []
                 token_count = 0
             else:
@@ -71,18 +79,19 @@ def tokenize_words(input_file, output_file, tokenizer, multitoken=True):
                     if not multitoken:
                         break
 
-        print(input_file, "Ignored", ignored, "sentences from", total)
+        print(input_file)
+        print("Processed sentences:", total)
+        print("Accepted:", accepted)
+        print("Ignored for length:", ignored_length)
+        print("Ignored for no predicates:", ignored_pred)
 
 
-def main(file):
+def main(file, target, multitoken=True):
     print("INFO: tokenizing words in file", file)
-    tokenizer = tokenizers['albert']  # todo AG add arg
+    tokenizer = tokenizers[target]  # todo AG add arg
 
-    res_file = ".".join(file.split(".")[:-1] + ["single_albert"])
-    tokenize_words(file, res_file, tokenizer, multitoken=False)
-
-    # res_file = ".".join(file.split(".")[:-1] + ["lisa_albert"])
-    # tokenize_words(file, res_file, tokenizer, multitoken=True)
+    res_file = ".".join(file.split(".")[:-1] + ["lisa_" + target])
+    tokenize_words(file, res_file, tokenizer, multitoken=multitoken)
 
 
 if __name__ == "__main__":
@@ -91,10 +100,9 @@ if __name__ == "__main__":
     # args = arg_parser.parse_args()
     # main(args.in_file_name)
     files = [
-        "data/conll2012-train.txt.lisa",
-        # "data/conll2012-dev.txt.lisa",
+        "data/conll2012-dev.txt.lisa",
         "data/conll2012-test.txt.lisa",
-        "data/conll2012-train-eval.txt.lisa",
+        "data/conll2012-train.txt.lisa",
     ]
     for file in files:
-        main(file)
+        main(file, 'roberta', True)

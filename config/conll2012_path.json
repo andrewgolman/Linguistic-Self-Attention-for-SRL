@@ -1,0 +1,5 @@
+{
+  "train": ["data/conll2012-train.single_albert"],
+  "dev": ["data/conll2012-dev.single_albert"],
+  "test": ["data/conll2012-test.single_albert"]
+}
