@@ -10,7 +10,7 @@ def print_model_metrics(metrics, file=None):
     for k, v in metrics.items():
         if k[0]:
             print(k, ":", v, file=file)
-    print("", file=file)
+    print("\n", file=file)
 
 
 class EvalMetricsCallBack(tf.keras.callbacks.Callback):

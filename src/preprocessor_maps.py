@@ -33,14 +33,9 @@ class RubertRunner(tf.keras.models.Model):
             return x.numpy()
 
 
-albert_tokenizer = transformers.AlbertTokenizer.from_pretrained('albert-base-v1')
-t5_tokenizer = transformers.T5Tokenizer.from_pretrained('t5-base')
-bert_tokenizer = transformers.BertTokenizer.from_pretrained('bert-base-cased')
-
-vocab_file = "pretrained/rubert_cased_L-12_H-768_A-12_v2/vocab.txt"
-
 models = {
     'albert': (transformers.TFAlbertModel, 'albert-base-v1'),
+    'roberta': (transformers.TFRobertaModel, 'roberta-base'),
     't5': (transformers.TFT5Model, 't5-base'),
     'bert': (transformers.TFBertModel, 'bert-base-cased'),
     'rubert': (RubertRunner, lambda x: x()),
