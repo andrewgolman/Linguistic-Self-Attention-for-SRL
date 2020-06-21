@@ -23,7 +23,6 @@ class CopyFromOutput(FunctionDispatcher):
         else:
             attention_to_copy = eval_attention_to_copy
 
-        # return tf.nn.softmax(attention_to_copy)
         return attention_to_copy
 
 

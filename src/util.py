@@ -22,6 +22,7 @@ def batch_str_decode(string_array, codec='utf-8'):
   return np.reshape(np.array(list(map(lambda p: p if not p or isinstance(p, str) else p.decode(codec),
                              np.reshape(string_array, [-1])))), string_array.shape)
 
+
 def load_transitions(transition_statistics, num_classes, vocab_map):
   transition_statistics_np = np.zeros((num_classes, num_classes))
   with open(transition_statistics, 'r') as f:

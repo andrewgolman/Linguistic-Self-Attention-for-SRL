@@ -4,7 +4,7 @@ import tensorflow.keras as keras
 class FunctionDispatcher(keras.layers.Layer):
     """
     Proxy between a model and a function-layer.
-    Takes outputs of various model layers and passes it to a function according to configs
+    Finds relevant arguments according to configs (see config/readme.md) and passes it to the function-layer.
     """
     def __init__(self, config, **kwargs):
         super(FunctionDispatcher, self).__init__()

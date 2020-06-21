@@ -19,7 +19,6 @@ hparams = {
   'beta1': 0.9,
   'beta2': 0.98,
   'epsilon': 1e-12,
-  'use_nesterov': True,
   'batch_size': 256,
   'shuffle_buffer_multiplier': 100,
   'steps_per_epoch': 600,  # debug mode

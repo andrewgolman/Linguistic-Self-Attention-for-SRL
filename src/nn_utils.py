@@ -5,29 +5,20 @@ from opennmt.utils.misc import shape_list
 
 
 def int_to_str_lookup_table(inputs, lookup_map):
-  # todo order of map.values() is probably not guaranteed; should prob sort by keys first
-  return tf.nn.embedding_lookup(np.array(list(lookup_map.values())), inputs)
+    # todo order of map.values() is probably not guaranteed; should prob sort by keys first
+    return tf.nn.embedding_lookup(np.array(list(lookup_map.values())), inputs)
 
 
 # similar to https://github.com/keras-team/keras/blob/master/keras/layers/core.py#L796
 class Bilinear(L.Layer):
     def __init__(self, output_size, add_bias=True):
-        # output_size = 2
         super(Bilinear, self).__init__()
         self.output_size = output_size
         self.add_bias = add_bias
 
     def build(self, input_shape):
-        # todo AG check
         self.matrix_shape = input_shape[0][-1] + self.add_bias
         self.left_dense = L.Dense(self.output_size * self.matrix_shape)
-        # # inputs1_size + add_bias1, output_size, inputs2_size + add_bias2
-        # self.kernel = self.add_weight(
-        #     name='kernel',
-            # shape=(self.matrix_shape, self.output_size, self.matrix_shape),
-            # initializer='glorot_uniform',
-            # trainable=True
-        # )
         super(Bilinear, self).build(input_shape)
 
     def call(self, data):
@@ -41,7 +32,6 @@ class Bilinear(L.Layer):
             left = tf.concat([left, tf.ones(left_bias_shape, dtype=tf.float32)], axis=2)
             right = tf.concat([right, tf.ones(right_bias_shape, dtype=tf.float32)], axis=2)
 
-        # lin = tf.matmul(left, tf.reshape(self.kernel, [self.matrix_shape, -1]))
         lin = self.left_dense(left)
         lin_shape = shape_list(lin)
         lin = tf.reshape(lin, [-1, lin_shape[1] * self.output_size, lin_shape[2] // self.output_size])
@@ -76,7 +66,7 @@ class ConditionalBilinearClassifier(L.Layer):
 
     def call(self, data):
         left, right, probs = data
-        # left: [BATCH_SIZE, SEQ_LEN, HID]  todo AG check all calls
+        # left: [BATCH_SIZE, SEQ_LEN, HID]
         # right: [BATCH_SIZE, SEQ_LEN, HID]
         # probs: [BATCH_SIZE, SEQ_LEN, SEQ_LEN]
         left = self.left_dropout(left)

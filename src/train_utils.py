@@ -16,16 +16,11 @@ def load_hparams(args, model_config):
     # First get default hyperparams from the model config
     hparams.update(model_config.get('hparams', {}))
 
-    if args.debug:
-        hparams['shuffle_buffer_multiplier'] = 10
-        hparams['eval_throttle_secs'] = 60
-        hparams['eval_every_steps'] = 100
-
     # Override those with command line hyperparams
     if args.hparams:
         hparams.update(vars(args.hparams))
 
-    logging.log(logging.INFO, "Using hyperparameters: {}".format(hparams.values()))
+    logging.log(logging.INFO, "Using hyperparameters: {}".format(hparams))
     return hparams
 
 
@@ -90,14 +85,6 @@ def load_json_configs(config_file_list, args=None):
   return combined_config
 
 
-def get_vars_for_moving_average(average_norms):
-  vars_to_average = tf.trainable_variables()
-  if not average_norms:
-    vars_to_average = [v for v in tf.trainable_variables() if 'norm' not in v.name]
-  logging.log(logging.INFO, "Creating moving averages for %d variables." % len(vars_to_average))
-  return vars_to_average
-
-
 def learning_rate(hparams, global_step):
     lr = hparams.learning_rate
     warmup_steps = hparams.warmup_steps
@@ -126,25 +113,3 @@ def learning_rate_scheduler(hparams, start_epoch=None):
         return learning_rate(hparams, (epoch + start_epoch) * steps_per_epoch).numpy()
 
     return callback
-
-
-def best_model_compare_fn(best_eval_result, current_eval_result, key):
-  """Compares two evaluation results and returns true if the second one is greater.
-    Both evaluation results should have the value for key, used for comparison.
-    Args:
-      best_eval_result: best eval metrics.
-      current_eval_result: current eval metrics.
-      key: key to value used for comparison.
-    Returns:
-      True if the loss of current_eval_result is smaller; otherwise, False.
-    Raises:
-      ValueError: If input eval result is None or no loss is available.
-    """
-
-  if not best_eval_result or key not in best_eval_result:
-    raise ValueError('best_eval_result cannot be empty or key "%s" is not found.' % key)
-
-  if not current_eval_result or key not in current_eval_result:
-    raise ValueError('best_eval_result cannot be empty or key "%s" is not found.' % key)
-
-  return best_eval_result[key] < current_eval_result[key]
