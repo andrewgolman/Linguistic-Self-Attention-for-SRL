@@ -4,10 +4,20 @@
 
 [Original paper](https://arxiv.org/abs/1804.08199)
 
+#### Requirements:
 
-#### Data setup:
+- python >= 3.6.10
 
-- Get CONLL-2012 data.
+
+#### Environment setup:
+
+```
+pip install -r requirements.txt
+```
+
+#### CoNLL-2012 data setup:
+
+- Get CONLL-2012 dataset.
 
 - Clone [this repo](https://github.com/iesl/conll2012-preprocess-parsing/tree/master/bin).
 
@@ -21,19 +31,14 @@ wget -P embeddings http://nlp.stanford.edu/data/glove.6B.zip
 unzip -j embeddings/glove.6B.zip glove.6B.100d.txt -d embeddings
 ```
 
+#### Russian Framebank data setup:
+
+- Follow preprocessing from [isanlp_srl_framebank](https://github.com/IINemo/isanlp_srl_framebank/tree/master/src/training)
+
+- Run bin/framebank_preprocess.py on the obtained files (this may need path tuning inside the scripts)
+
 - If you want to run the model on FastText embeddings, you may download them at 
 https://fasttext.cc/docs/en/crawl-vectors.html
-
-#### Requirements:
-
-- python >= 3.6.10
-
-
-#### Environment setup:
-
-```
-pip install -r requirements.txt
-```
 
 #### Running:
 
