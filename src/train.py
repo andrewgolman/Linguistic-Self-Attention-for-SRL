@@ -25,18 +25,16 @@ arg_parser.add_argument('--save_dir', required=True,
                         help='Directory to save models, outputs, etc.')
 arg_parser.add_argument('--hparams', type=str,
                         help='Comma separated list of "name=value" hyperparameter settings.')
-arg_parser.add_argument('--debug', dest='debug', action='store_true',
-                        help='Whether to run in debug mode: a little faster and smaller')
 arg_parser.add_argument('--checkpoint', required=False, type=str,
-                        help='Start with weights from checkpoint')
+                        help='Start with weights from a checkpoint')
 arg_parser.add_argument('--disable_teacher_forcing', action="store_true",
-                        help='disable_teacher_forcing')
+                        help='disable teacher forcing, run all output layers in evaluation mode')
 arg_parser.add_argument('--tune_first_layer', action="store_true",
-                        help='tune_first_layer')
-arg_parser.add_argument('--eval_every', required=True, type=int)
-arg_parser.add_argument('--save_every', required=True, type=int)
-
-arg_parser.set_defaults(debug=False)
+                        help='tune the first layer model')
+arg_parser.add_argument('--eval_every', required=True, type=int,
+                        help='frequency of metrics computation in epochs')
+arg_parser.add_argument('--save_every', required=True, type=int,
+                        help='frequency of model saving in epochs')
 
 args, leftovers = arg_parser.parse_known_args()
 
@@ -75,9 +73,6 @@ def main():
     vocab = Vocab(data_config, args.save_dir, data_paths['train'])
     vocab.update_vocab_files(data_paths['dev'])
 
-    embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
-                       if 'pretrained_embeddings' in embeddings_map]
-
     # Generate mappings from feature/label names to indices in the model_fn inputs
     feature_idx_map, label_idx_map = util.load_feat_label_idx_maps(data_config)
 
@@ -104,7 +99,10 @@ def main():
         loss=losses,
     )
 
+    embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
+                       if 'pretrained_embeddings' in embeddings_map]
     lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
+
     train_batch_generator = train_utils.batch_generator(
         task_list_size, lookup_ops,
         data_config, data_paths['train'],

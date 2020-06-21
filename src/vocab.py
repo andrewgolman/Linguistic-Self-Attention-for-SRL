@@ -60,7 +60,7 @@ class Vocab:
             tf.lookup.TextFileInitializer(
               "%s/%s.txt" % (self.vocabs_dir, v), tf.string, 0, tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER,
             ),
-            num_oov_buckets=1,  # =num_oov, todo CHECK
+            num_oov_buckets=1,
           )
 
       if embedding_files:

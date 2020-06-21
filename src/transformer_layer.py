@@ -151,7 +151,7 @@ class TransformerLayer(keras.layers.Layer):
             dropout=1-self.hparams.prepost_dropout,
             attention_dropout=1-self.hparams.attn_dropout,
             ffn_dropout=1-self.hparams.ff_dropout,
-            ffn_activation=tf.nn.leaky_relu,  # todo verify do we need it to be leaky?
+            ffn_activation=tf.nn.leaky_relu,
         )
 
     def compute_special_attention(self, features, mask, outputs, labels):
