@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from sklearn.metrics import f1_score, precision_recall_fscore_support
-from collections import defaultdict
+from collections import Counter
 
 import evaluation_fns_np
 import nn_utils
@@ -196,12 +196,15 @@ class LabelF1(BaseMetric):
     name = "LabelF1"
 
     def make_call(self, labels, outputs, mask, **kwargs):
+        target_mask = tf.cast(labels[:, :, 0] != 2, tf.int32)
+
         reverse_maps = self.static_params['reverse_maps']
         outputs = nn_utils.int_to_str_lookup_table(outputs, reverse_maps['srl'])
         labels = nn_utils.int_to_str_lookup_table(labels, reverse_maps['srl'])
 
         if 'srl_mask' in kwargs:
             srl_mask = kwargs['srl_mask']
+            srl_mask *= target_mask
             srl_seq_len = tf.math.reduce_max(tf.reduce_sum(srl_mask, -1))
             # no need for extra padding, as WORD_SEQ_LEN is a length of a padded word sequence
             srl_mask = util.padded_to_full_word_mask(srl_mask, srl_seq_len, tf.shape(srl_mask)[1])
@@ -231,16 +234,21 @@ class LabelF1(BaseMetric):
 
         f1_macro = f1_score(labels, outputs, average='macro')
         f1_micro = f1_score(labels, outputs, average='micro')
-        return [f1_macro, f1_micro]
+        f1_classwise = f1_score(labels, outputs, average=None)
+        return [f1_macro, f1_micro, f1_classwise]
 
 
 class BinaryF1(BaseMetric):
     name = "BinaryF1"
 
-    def make_call(self, labels, outputs, mask, **kwargs):
+    def make_call(self, labels, outputs, mask, srl_labels, **kwargs):
+        target_mask = tf.cast(srl_labels[:, :, 0] != 2, tf.float32)
+        mask *= target_mask
+        labels = tf.gather_nd(labels, tf.where(mask))
+        outputs = tf.gather_nd(outputs, tf.where(mask))
         labels = labels.numpy().reshape(-1)
         outputs = outputs.numpy().reshape(-1)
-
+        # mask = mask.numpy().reshape(-1)
         self.update_state([labels, outputs])
 
     def result(self):

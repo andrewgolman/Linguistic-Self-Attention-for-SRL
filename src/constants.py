@@ -22,8 +22,6 @@ hparams = {
   'use_nesterov': True,
   'batch_size': 256,
   'shuffle_buffer_multiplier': 100,
-  'eval_throttle_secs': 1000,
-  'eval_every_steps': 1000,
   'steps_per_epoch': 600,  # debug mode
   'num_train_epochs': 10000,
   'gradient_clip_norm': 5.0,
@@ -36,7 +34,9 @@ hparams = {
   'attn_dropout': 1.0,
   'ff_dropout': 1.0,
   'prepost_dropout': 1.0,
-  'random_seed': 5  # int(time.time())  # debug mode
+  'random_seed': 55,
+  'loss_bias': 1.0,
+  'mask_th': 0.5,
 }
 
 

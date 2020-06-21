@@ -6,6 +6,7 @@ from tensorflow_addons.text.crf import crf_decode, crf_log_likelihood, viterbi_d
 from opennmt.utils.misc import shape_list
 from opennmt.layers.position import SinusoidalPositionEncoder
 
+
 class OutputLayer(FunctionDispatcher):
     def __init__(self, transformer_layer_id, task_map, **params):
         super(OutputLayer, self).__init__(task_map, **params)
@@ -53,14 +54,6 @@ class SoftmaxClassifier(OutputLayer):
 
     def loss(self, targets, output, mask):
         logits = output['scores']
-        # n_labels = self.static_params['task_vocab_size']
-        # targets_onehot = tf.one_hot(indices=targets, depth=n_labels, axis=-1)
-        # return self.eval_loss(
-        #     y_pred=tf.reshape(logits, [-1, n_labels]),
-        #     y_true=tf.reshape(targets_onehot, [-1, n_labels]),
-        #     sample_weight=tf.reshape(mask, [-1])
-        # )
-
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
         n_tokens = tf.reduce_sum(mask)
         return tf.reduce_sum(cross_entropy * mask) / n_tokens
@@ -253,6 +246,8 @@ class SRLBilinear(OutputLayer):
         :param targets: [BATCH_SIZE, SEQ_LEN, batch_num_predicates] SRL labels
         :param transition_params: [num_labels x num_labels] transition parameters, if doing Viterbi decoding
         '''
+        self.teacher_forcing = not self.in_eval_mode  # !!!
+
         features, mask = data
 
         input_shape = tf.shape(features)
@@ -304,10 +299,12 @@ class SRLBilinear(OutputLayer):
         if transition_params is not None and self.in_eval_mode:
             num_predicates = shape_list(srl_logits_transposed)[0]
             if tf.not_equal(num_predicates, 0):
-                predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
-                # unstacked_logits = tf.unstack(srl_logits_transposed, axis=0)
-                # unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
-                # predictions = tf.stack(unstacked_predictions)
+                if 'viterbi' in self.static_params:
+                    unstacked_logits = tf.unstack(srl_logits_transposed, axis=0)
+                    unstacked_predictions = [viterbi_decode(l, transition_params)[0] for l in unstacked_logits]
+                    predictions = tf.stack(unstacked_predictions)
+                else:
+                    predictions, _ = crf_decode(srl_logits_transposed, transition_params, seq_lens)
 
         output = {
             'predictions': predictions,
@@ -321,6 +318,7 @@ class SRLBilinear(OutputLayer):
         return output
 
     def loss(self, targets, output, mask):
+        self.teacher_forcing = not self.in_eval_mode  # !!!
         num_labels = self.static_params['task_vocab_size']
         transition_params = self.static_params['transition_params']
 
@@ -365,16 +363,9 @@ class SRLBilinear(OutputLayer):
                 self.static_params['transition_params'] = new_transition_params
 
         else:
-            # num_predicates = shape_list(srl_logits_transposed)[0]
-            # if tf.equal(num_predicates, 0):
-            #     return 1e5
-            # srl_targets_onehot = tf.one_hot(indices=srl_targets_predicted_predicates, depth=num_labels, axis=-1)
-            # return self.eval_loss(
-            #     y_pred=tf.reshape(srl_logits_correct, [-1, num_labels]),
-            #     y_true=tf.reshape(srl_targets_onehot, [-1, num_labels]),
-            #     sample_weight=tf.reshape(gather_mask_correct, [-1])
-            # )
-            # return 0  # !!!
+            num_predicates = shape_list(srl_logits_transposed)[0]
+            if tf.equal(num_predicates, 0):
+                return 1e5
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=tf.reshape(srl_logits_correct, [-1, num_labels]),
                 labels=tf.reshape(srl_targets, [-1])
@@ -397,8 +388,10 @@ class SRLArgDetection(OutputLayer):
         self.dense1 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
         self.dense2 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
 
-        self.loss_bias = 1.
-        self.mask_th = 0.5
+        # self.loss_bias = self.hparams.loss_bias
+        # self.mask_th = self.hparams.mask_th
+        self.loss_bias = 0.
+        self.mask_th = .0
 
         self.v_label = self.static_params['v_label']
         self.positional_encoder = SinusoidalPositionEncoder()
@@ -406,16 +399,18 @@ class SRLArgDetection(OutputLayer):
     def make_call(self, data, srl_mask, srl_labels):
         features, mask = data
         # predictions will be made by (true mask + random mask)
-        if not self.in_eval_mode:
+        if not self.in_eval_mode and self.mask_th > 0:
             enhanced_srl_mask = tf.where(tf.random.uniform(tf.shape(srl_mask)) > self.mask_th, 1, srl_mask)
             mask *= enhanced_srl_mask
-            # enhanced_srl_mask = mask
         else:
             enhanced_srl_mask = mask
 
+        target_mask = tf.cast(srl_labels[:, :, 0] != self.v_label, tf.int32)
+        enhanced_srl_mask *= target_mask
+
         features = self.positional_encoder(features)  # BATCH_SIZE, SEQ_LEN, HID
 
-        # todo AG expected only one predicate per sentence!
+        # todo AG expected only one predicate per sentence, works only on framebank!
         predicate_ind = tf.where(srl_labels[:, :, 0] == self.v_label)
         predicate_features = tf.gather_nd(features, predicate_ind)  # BATCH_SIZE, HID
         predicate_features = tf.expand_dims(predicate_features, axis=1)
@@ -429,7 +424,6 @@ class SRLArgDetection(OutputLayer):
         return res
 
     def loss(self, targets, output, mask):
-        # targets == srl_mask
         if not self.in_eval_mode:
             mask *= tf.cast(output['enhanced_srl_mask'], mask.dtype)
 
@@ -445,17 +439,21 @@ class SRLConcatClassifier(OutputLayer):
         super(SRLConcatClassifier, self).__init__(transformer_layer_id, **params)
 
         self.classifier = SoftmaxClassifier(transformer_layer_id, **params)
-        self.dense1 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
-        self.dense2 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.dropout = L.Dropout(0.2)
+        self.dense1 = L.Dense(4 * self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.dense2 = L.Dense(2 * self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
+        self.dense3 = L.Dense(self.hparams.sa_hidden_size, activation=L.LeakyReLU(alpha=0.1))
         self.positional_encoder = SinusoidalPositionEncoder()
         self.v_label = self.static_params['v_label']
 
     def make_call(self, data, srl_labels, srl_mask):
         features, mask = data
+        target_mask = tf.cast(srl_labels[:, :, 0] != self.v_label, tf.int32)
+        srl_mask *= target_mask
         mask *= srl_mask
         features = self.positional_encoder(features)  # BATCH_SIZE, SEQ_LEN, HID
 
-        # todo AG expected only one predicate per sentence!
+        # todo AG expected only one predicate per sentence, works only on framebank!
         predicate_ind = tf.where(srl_labels[:, :, 0] == self.v_label)
         predicate_features = tf.gather_nd(features, predicate_ind)  # BATCH_SIZE, HID
         predicate_features = tf.expand_dims(predicate_features, axis=1)
@@ -463,7 +461,10 @@ class SRLConcatClassifier(OutputLayer):
         features = tf.concat([features, predicate_features], axis=-1)
 
         features = self.dense1(features)
+        features = self.dropout(features)
         features = self.dense2(features)
+        features = self.dropout(features)
+        features = self.dense3(features)
         res = self.classifier.make_call([features, mask])
         res['srl_mask'] = srl_mask
         return res
