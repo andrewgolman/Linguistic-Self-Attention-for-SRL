@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.keras as keras
 import tensorflow.keras.optimizers as optim
 import tensorflow_addons as tfa
 
@@ -18,31 +17,16 @@ import tensorflow.compat.v1.logging as logging
 
 
 arg_parser = argparse.ArgumentParser(description='')
-arg_parser.add_argument('--train_files', required=True,
-                        help='Comma-separated list of training data files')
-arg_parser.add_argument('--dev_files', required=True,
-                        help='Comma-separated list of development data files')
+arg_parser.add_argument('--data', required=True,
+                        help='Path to a file with data paths')
+arg_parser.add_argument('--config', required=True,
+                        help="Path to a file with config mappings")
 arg_parser.add_argument('--save_dir', required=True,
                         help='Directory to save models, outputs, etc.')
-# todo load this more generically, so that we can have diff stats per task
-arg_parser.add_argument('--transition_stats',
-                        help='Transition statistics between labels')
 arg_parser.add_argument('--hparams', type=str,
                         help='Comma separated list of "name=value" hyperparameter settings.')
 arg_parser.add_argument('--debug', dest='debug', action='store_true',
                         help='Whether to run in debug mode: a little faster and smaller')
-arg_parser.add_argument('--data_config', required=True,
-                        help='Path to data configuration json')
-arg_parser.add_argument('--model_configs', required=True,
-                        help='Comma-separated list of paths to model configuration json.')
-arg_parser.add_argument('--task_configs', required=True,
-                        help='Comma-separated list of paths to task configuration json.')
-arg_parser.add_argument('--layer_configs', required=True,
-                        help='Comma-separated list of paths to layer configuration json.')
-arg_parser.add_argument('--attention_configs',
-                        help='Comma-separated list of paths to attention configuration json.')
-arg_parser.add_argument('--best_eval_key', required=True, type=str,
-                        help='Key corresponding to the evaluation to be used for determining early stopping.')
 arg_parser.add_argument('--checkpoint', required=False, type=str,
                         help='Start with weights from checkpoint')
 arg_parser.add_argument('--disable_teacher_forcing', action="store_true",
@@ -63,12 +47,15 @@ def main():
     if not os.path.isdir(args.save_dir):
         util.fatal_error("save_dir not found: %s" % args.save_dir)
 
+    data_paths = train_utils.load_data_config(args.data)
+    global_config = train_utils.load_global_config(args.config)
+
     # Load all the various configurations
-    data_config = train_utils.load_json_configs(args.data_config)
-    model_config = train_utils.load_json_configs(args.model_configs)
-    task_config = train_utils.load_json_configs(args.task_configs, args)
-    layer_config = train_utils.load_json_configs(args.layer_configs)
-    attention_config = train_utils.load_json_configs(args.attention_configs)
+    data_config = train_utils.load_json_configs(global_config['data_configs'])
+    model_config = train_utils.load_json_configs(global_config['model_configs'])
+    layer_config = train_utils.load_json_configs(global_config['layer_configs'])
+    attention_config = train_utils.load_json_configs(global_config['attention_configs'])
+    task_config = train_utils.load_json_configs(global_config['task_configs'], **vars(args), **data_paths)
 
     data_config, model_config = util.parse_multifeatures(data_config, model_config)
     # Combine layer, task and layer, attention maps
@@ -85,11 +72,8 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    train_filenames = args.train_files.split(',')
-    dev_filenames = args.dev_files.split(',')
-
-    vocab = Vocab(data_config, args.save_dir, train_filenames)
-    vocab.update_vocab_files(dev_filenames)
+    vocab = Vocab(data_config, args.save_dir, data_paths['train'])
+    vocab.update_vocab_files(data_paths['dev'])
 
     embedding_files = [embeddings_map['pretrained_embeddings'] for embeddings_map in model_config['embeddings'].values()
                        if 'pretrained_embeddings' in embeddings_map]
@@ -123,7 +107,7 @@ def main():
     lookup_ops = vocab.create_vocab_lookup_ops(embedding_files)
     train_batch_generator = train_utils.batch_generator(
         task_list_size, lookup_ops,
-        data_config, train_filenames,
+        data_config, data_paths['train'],
         num_epochs=hparams.train_epochs,
         shuffle=True, batch_size=hparams.batch_size
     )
@@ -132,13 +116,13 @@ def main():
         dataset.get_dataset(
             [filename], data_config, lookup_ops,
             batch_size=hparams.validation_batch_size, num_epochs=1, shuffle=False
-        ) for filename in dev_filenames
+        ) for filename in data_paths['dev']
     ]
 
+    # set shapes and unittest
     batch = next(train_batch_generator)
     model.start_custom_eval()
     model(batch[0])
-    # do not remove this line, it sets teacher forcing
     model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
     model(batch[0])
 
@@ -151,7 +135,6 @@ def main():
         start_epoch = 0
 
     model.summary()
-    # model.fit(train_batch_generator, epochs=1, steps_per_epoch=1)
 
     if args.tune_first_layer:
         model.unfreeze_first_layer()
@@ -170,6 +153,7 @@ def main():
     ]
     save_callback = callbacks.SaveCallBack(path=args.save_dir, save_every=args.save_every, start_epoch=start_epoch)
 
+    model.end_custom_eval(enable_teacher_forcing=not args.disable_teacher_forcing)
     model.fit(
         train_batch_generator,
         epochs=hparams.train_epochs,

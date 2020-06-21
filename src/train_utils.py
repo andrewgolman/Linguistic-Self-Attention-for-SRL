@@ -38,7 +38,40 @@ def batch_generator(task_count, lookup_ops, data_config, data_files, batch_size,
                 yield batch, [0] * (task_count + 1)
 
 
-def load_json_configs(config_file_list, args=None):
+required_configs = {
+    'data_configs',
+    'model_configs',
+    'layer_configs',
+    'task_configs',
+    'attention_configs',
+}
+
+
+def load_global_config(path):
+    with open(path) as f:
+        try:
+            config = json.load(f)
+            for c in required_configs:
+                assert isinstance(config.get(c), list)
+            return config
+
+        except json.decoder.JSONDecodeError as e:
+            logging.log(logging.ERROR, 'Error reading json: "%s"' % path)
+            logging.log(logging.ERROR, e.msg)
+            sys.exit(1)
+
+
+def load_data_config(path):
+    with open(path) as f:
+        try:
+            return json.load(f)
+        except json.decoder.JSONDecodeError as e:
+            logging.log(logging.ERROR, 'Error reading json: "%s"' % path)
+            logging.log(logging.ERROR, e.msg)
+            sys.exit(1)
+
+
+def load_json_configs(config_files, **args):
   """
   Loads a list of json configuration files into one combined map. Configuration files
   at the end of the list take precedence over earlier configuration files (so they will
@@ -47,21 +80,19 @@ def load_json_configs(config_file_list, args=None):
   If args is passed, then this function will attempt to replace entries surrounded with
   the special tokens ## ## with an entry from args with the same name.
 
-  :param config_file_list: list of json configuration files to load
+  :param config_files: list of json configuration files to load
   :param args: command line args to replace special strings in json
   :return: map containing combined configurations
   """
   combined_config = {}
-  if config_file_list:
-    config_files = config_file_list.split(',')
-    for config_file in config_files:
+  for config_file in config_files:
       if args:
         # read the json in as a string so that we can run a replace on it
         json_str = Path(config_file).read_text()
         matches = re.findall(r'.*##(.*)##.*', json_str)
         for match in matches:
           try:
-            value = getattr(args, match)
+            value = args[match]
             json_str = json_str.replace('##%s##' % match, value)
           except AttributeError:
             logging.log(logging.ERROR, 'Could not find "%s" attribute in command line args when parsing: %s' %
