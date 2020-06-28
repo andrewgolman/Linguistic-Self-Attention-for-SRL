@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 - Clone [this repo](https://github.com/iesl/conll2012-preprocess-parsing/tree/master/bin).
 
-- Run bin/pp12.sh in the IESL repo directory. (this step might not be accurate, but you can see which scripts you need within pp12.sh or IESL readme)
+- Run bin/pp12.sh in the IESL repo directory.
 
 - Run `bin/prepare_data.sh [conll12 preprocessed files directory]` 
 
@@ -35,7 +35,11 @@ unzip -j embeddings/glove.6B.zip glove.6B.100d.txt -d embeddings
 
 - Follow preprocessing from [isanlp_srl_framebank](https://github.com/IINemo/isanlp_srl_framebank/tree/master/src/training)
 
-- Run bin/framebank_preprocess.py on the obtained files (this may need path tuning inside the scripts)
+- Put generated files [features.pckl](https://github.com/IINemo/isanlp_srl_framebank/blob/d6e2af3c5015ac31070bce076835d4db1f7593ae/src/training/run_extract_features.py)
+and [ling_data.pckl](https://github.com/IINemo/isanlp_srl_framebank/blob/ff0c7b5cf3303f290143d87d9c5f1af46abcf3e5/src/training/run_ling_parse.py)
+into data directory.
+
+- Run bin/framebank_preprocess.py.
 
 - If you want to run the model on FastText embeddings, you may download them at 
 https://fasttext.cc/docs/en/crawl-vectors.html
@@ -87,13 +91,9 @@ parameters into layer-specific format.
 5. attention_fns.py implements outputs that will be used in
 further transformer layers
 
-#### Differences from the original paper
-- used transformer implementation by OpenNMT. This implementation has
-2 dense layers instead of 3, so the size of hidden layer has been
-increased. 
-- on inference SRL loss is calculated over correctly predicted predicates.
-This might be used on the late stages of training
+#### Notes
 
-#### Current todos:
-- add all data generation code
-- evaluate within the graph
+- We use OpenNMT implementation of the multi-head self-attention encoder
+- While training, long sentences (more than 100 tokens) are ignored to save GPU memory
+- Training an English model on Tesla-1080 takes about up to 6 hours.
+- Training a Russian model in Colab takes up to 2 hours.

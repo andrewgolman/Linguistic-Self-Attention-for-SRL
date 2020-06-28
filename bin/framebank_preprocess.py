@@ -1,10 +1,8 @@
-import json
 import pickle
-import pandas as pd
 
-with open("data/cleared_corpus.json") as f:
-    data = json.load(f)
 
+with open("data/features.pckl", "rb") as f:
+    data = pickle.load(f)
 
 with open("data/ru_srl_only.lisa", "w") as fout:
     for sid, sentence in data.groupby("ex_id"):
