@@ -183,7 +183,7 @@ class LISAModel(tf.keras.models.Model):
                                                             'embeddings', 'precomputed']:
                 feat = self.first_layer_model(tf.cast(inputs[input_name], tf.int32))
                 features.append(
-                    feat[0]  # if self.model_config['first_layer'] != 'rubert' else feat
+                    feat[0] if self.model_config['first_layer'] != 'rubert' else feat
                 )
             elif self.model_config['first_layer'] == 'precomputed':
                 features.append(
@@ -242,13 +242,13 @@ class LISAModel(tf.keras.models.Model):
                         outputs=outputs,
                         labels=labels,
                     )  # todo doc
-                    if i != self.num_layers - 1:
-                        # todo AG remove all this duct tape (through configs maybe)
+                    if i != self.num_layers - 1:  # do not unmask last layer outputs
+                        # todo maybe unmask only those would be used in further layers
                         token_level_outputs[task] = {
                             k: util.word_to_token_level(v, masks['word_begins_full_mask']) for k, v in
                                 outputs[task].items()
                         }
-                        if task == 'parse_head':
+                        if self.task_config[i][task].get('non_fixed_last_dim'):
                             x = tf.transpose(token_level_outputs[task]['scores'], [0, 2, 1])
                             x = util.word_to_token_level(x, masks['word_begins_full_mask'])
                             x = tf.transpose(x, [0, 2, 1])

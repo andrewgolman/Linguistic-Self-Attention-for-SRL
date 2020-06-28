@@ -15,6 +15,7 @@ Task data:
 ```
 {
     "penalty": FLOAT,  # contribution of this task to the total loss
+    "non_fixed_last_dim": BOOL,  # in case output of the task has shape SEQ_LEN * SEQ_LEN
     "output_fn/attention_fn": FUNCTION_DATA,  # which output layer or attention function to use
     "eval_fns": {  # which metrics to use
         "name1": FUNCTION_DATA,

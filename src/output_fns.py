@@ -318,7 +318,6 @@ class SRLBilinear(OutputLayer):
         return output
 
     def loss(self, targets, output, mask):
-        self.teacher_forcing = not self.in_eval_mode  # !!!
         num_labels = self.static_params['task_vocab_size']
         transition_params = self.static_params['transition_params']
 
@@ -350,7 +349,7 @@ class SRLBilinear(OutputLayer):
         srl_targets_pred_indices = tf.where(tf.sequence_mask(tf.reshape(correct_predicate_counts, [-1])))
         srl_targets_predicted_predicates = tf.gather_nd(srl_targets, srl_targets_pred_indices)
 
-        if transition_params is not None and self.teacher_forcing:
+        if transition_params is not None:
             log_likelihood, new_transition_params = crf_log_likelihood(
                 srl_logits_correct,
                 srl_targets_predicted_predicates,

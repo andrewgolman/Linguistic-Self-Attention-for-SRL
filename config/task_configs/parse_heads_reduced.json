@@ -1,5 +1,6 @@
 {
   "parse_head": {
+    "non_fixed_last_dim": true,
     "penalty": 0.1,
     "output_fn": {
       "name": "parse_bilinear",
