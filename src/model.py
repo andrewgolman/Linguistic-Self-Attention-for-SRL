@@ -102,6 +102,7 @@ class LISAModel(tf.keras.models.Model):
                         task=task,
                         config=eval_map,
                         reverse_maps=self.vocab.reverse_maps,
+                        v_label=self.vocab.vocab_maps['srl']['B-V'],  # todo AG
                     )
                     self.custom_metrics.append(fn)
 

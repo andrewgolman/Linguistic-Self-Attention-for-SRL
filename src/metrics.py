@@ -11,9 +11,9 @@ EPS = 1e-20
 
 
 class BaseMetric:
-    def __init__(self, task, config, reverse_maps=None):
+    def __init__(self, task, config, reverse_maps=None, **kwargs):
         self.task = task
-        self.static_params = {}
+        self.static_params = kwargs
         self.label_params = {}
         self.token_params = {}
         self.output_params = {}
@@ -66,9 +66,6 @@ class BaseMetric:
 
 class Accuracy(BaseMetric):
     name = "Accuracy"
-
-    def __init__(self, *args, **kwargs):
-        super(Accuracy, self).__init__(*args, **kwargs)
 
     def reset_states(self):
         self.accuracy = tf.keras.metrics.Accuracy()
@@ -196,7 +193,7 @@ class LabelF1(BaseMetric):
     name = "LabelF1"
 
     def make_call(self, labels, outputs, mask, **kwargs):
-        target_mask = tf.cast(labels[:, :, 0] != 2, tf.int32)
+        target_mask = tf.cast(labels[:, :, 0] != self.static_params['v_label'], tf.int32)
 
         reverse_maps = self.static_params['reverse_maps']
         outputs = nn_utils.int_to_str_lookup_table(outputs, reverse_maps['srl'])
@@ -242,7 +239,7 @@ class BinaryF1(BaseMetric):
     name = "BinaryF1"
 
     def make_call(self, labels, outputs, mask, srl_labels, **kwargs):
-        target_mask = tf.cast(srl_labels[:, :, 0] != 2, tf.float32)
+        target_mask = tf.cast(srl_labels[:, :, 0] != self.static_params['v_label'], tf.float32)
         mask *= target_mask
         labels = tf.gather_nd(labels, tf.where(mask))
         outputs = tf.gather_nd(outputs, tf.where(mask))
@@ -260,34 +257,6 @@ class BinaryF1(BaseMetric):
 
         f1 = precision_recall_fscore_support(labels, outputs)
         return f1
-
-
-class ArgumentDetectionF1(BaseMetric):
-    """
-    F1 on argument detection, regardless of classification
-    """
-    name = "ArgumentDetectionF1"
-
-    def __init__(self, *args, **kwargs):
-        super(ArgumentDetectionF1, self).__init__(*args, **kwargs)
-        self.conll_srl = ConllSrlEval(*args, **kwargs)
-
-        forward_srl_map = {v: k for k, v in self.static_params['reverse_maps']['srl']}
-        out_label = forward_srl_map["O"]
-        v_label = forward_srl_map["B-V"]
-        in_label = forward_srl_map["B-ARG0"] if "B-ARG0" in forward_srl_map else forward_srl_map["B-агенс"]  # todo to config
-        self.mapper = lambda x: x if x in [out_label, v_label] else in_label
-
-    def make_call(self, labels, outputs, *args, **kwargs):
-        labels = tf.map_fn(self.mapper, labels)
-        outputs = tf.map_fn(self.mapper, outputs)
-        self.conll_srl.make_call(labels, outputs, *args, **kwargs)
-
-    def reset_states(self):
-        self.conll_srl.reset_states()
-
-    def result(self):
-        return self.conll_srl.result()
 
 
 class ValLoss(BaseMetric):
@@ -310,6 +279,5 @@ dispatcher = {
     'conll_srl_eval': ConllSrlEval,
     'conll_parse_eval': ConllParseEval,
     'label_f1': LabelF1,
-    'arg_detection_f1': ArgumentDetectionF1,
     'binary_f1': BinaryF1,
 }
