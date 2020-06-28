@@ -95,5 +95,7 @@ further transformer layers
 
 - We use OpenNMT implementation of the multi-head self-attention encoder
 - While training, long sentences (more than 100 tokens) are ignored to save GPU memory
-- Training an English model on Tesla-1080 takes about up to 6 hours.
+- Training an English model on Tesla-1080 takes up to 6 hours.
 - Training a Russian model in Colab takes up to 2 hours.
+- Some output layers currently support only one predicate per sentence.
+- (some kind of inference script for FrameBank might be coming up soon)
